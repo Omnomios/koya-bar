@@ -6,14 +6,9 @@ This folder contains a small demo bar built on top of Koya. It showcases a basic
 
 1. Install Koya and the Hypr plugin.
    - See the Koya install docs and ensure the `hypr` native module is available to Koya.
-2. Ensure these files exist (they do in this repo):
-   - `index.js`
-   - `hypr/workspaces.js`
-3. Run the demo from this folder:
-
-```bash
-koya -i index.js
-```
+2. Copy this repo into ~/.config/koya
+3. Make sure the shaders are provided by the package or copy them into ~/.config/koya/shaders
+4. Run Koya
 
 Notes:
 - Requires a Wayland session (e.g., Hyprland) and Vulkan drivers.
