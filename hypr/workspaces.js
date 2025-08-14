@@ -45,8 +45,6 @@ class WorkspaceCell
                 cornerResolution: 2,
                 colour: "#444",
             },
-            position: { x: this.size.x/2, y: 0},
-            origin: { x: this.size.x/2, y: 0},
             layoutOrder: parseInt(this.workspace.id)
         });
         UI.attach(this.window.win, this.boxElement, textId);
