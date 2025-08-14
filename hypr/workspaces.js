@@ -4,7 +4,7 @@ import * as Log from 'Koya/Log';
 import * as Hypr from 'Module/hypr';
 
 //const FONT = '/home/user/.local/share/fonts/JetBrainsMonoNerdFontMono-Regular.ttf';
-const FONT = '/usr/share/fonts/open-sans/OpenSans-Regular.ttf';
+const FONT = '/usr/share/fonts/TTF/OpenSans-Regular.ttf';
 
 class WorkspaceCell
 {
@@ -282,11 +282,7 @@ export class HyprWorkspaces
     {
         for(const w of Object.values(this.workspaceCell)) w.focus(false);
 
-        if(!this.workspaceCell[workspaceName])
-        {
-            Log.warn(`${workspaceName} does not exist.`);
-            return;
-        }
+        if(!this.workspaceCell[workspaceName]) return;
 
         this.workspaceCell[workspaceName].focus(true);
         for(const w of Object.values(this.displayWindow)) w.show();
