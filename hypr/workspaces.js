@@ -3,8 +3,7 @@ import * as UI from 'Koya/UserInterface';
 import * as Log from 'Koya/Log';
 import * as Hypr from 'Module/hypr';
 
-const FONT = '/home/user/.local/share/fonts/JetBrainsMonoNerdFontMono-Regular.ttf';
-//const FONT = '/usr/share/fonts/TTF/OpenSans-Regular.ttf';
+const FONT = '/rom/font/DroidSansMNerdFont-Regular.otf';
 
 class WorkspaceCell
 {
@@ -28,14 +27,13 @@ class WorkspaceCell
         const textId = UI.createElement(this.window.win, {
             renderable: {
                 type: 'text',
-                justify: 'center',
                 string: `${this.workspace.name}`,
-                size: 16,
+                size: 14,
                 colour: "#fff",
                 font: FONT
             },
-            layoutSize: { w: this.size.x-2, h:this.size.y-4 },
-            contentAlign: {x: 'center', y: 'center'}
+            item: { preferredSize: { w: this.size.x - 2, h: this.size.y - 4 } },
+            contentAlign: { x: 'center', y: 'center' }
         });
 
         this.boxElement = UI.createElement(this.window.win, {
@@ -46,7 +44,7 @@ class WorkspaceCell
                 cornerResolution: 2,
                 colour: "#444",
             },
-            layoutOrder: parseInt(this.workspace.id)
+            item: { order: parseInt(this.workspace.id) }
         });
         UI.attach(this.window.win, this.boxElement, textId);
 
@@ -179,12 +177,12 @@ class DisplayWindow
 
         this.root = UI.createElement(this.win, {
             layout: {
-                type: 'flow-row',
+                type: 'row',
                 wrap: false,
                 gap: { x: 1, y: 0 },
                 padding: { t: 8, r: 4, b: 0, l: 4 },
-                justify: 'left',
-                align: 'left'
+                justifyContent: 'start',
+                alignItems: 'start'
             }
         });
         UI.attachRoot(this.win, this.root);
