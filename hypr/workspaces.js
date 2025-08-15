@@ -3,8 +3,8 @@ import * as UI from 'Koya/UserInterface';
 import * as Log from 'Koya/Log';
 import * as Hypr from 'Module/hypr';
 
-//const FONT = '/home/user/.local/share/fonts/JetBrainsMonoNerdFontMono-Regular.ttf';
-const FONT = '/usr/share/fonts/TTF/OpenSans-Regular.ttf';
+const FONT = '/home/user/.local/share/fonts/JetBrainsMonoNerdFontMono-Regular.ttf';
+//const FONT = '/usr/share/fonts/TTF/OpenSans-Regular.ttf';
 
 class WorkspaceCell
 {
@@ -14,6 +14,7 @@ class WorkspaceCell
         this.window = window;
         this.workspace = workspace;
         this.isUrgent = false;
+        this.isFocussed = false;
     }
 
     createUI ()
@@ -114,6 +115,7 @@ class WorkspaceCell
     {
         if(!this.boxElement) return;
 
+        this.isFocussed = enabled;
         UI.setEnabled(this.window.win, this.topLine, enabled || this.isUrgent);
 
         if(enabled)
@@ -137,6 +139,9 @@ class WorkspaceCell
 
     setUrgent ()
     {
+        // If they're already on the workspace don't bother
+        if(this.isFocussed) return;
+
         this.isUrgent = true;
         UI.setEnabled(this.window.win, this.topLine, true);
         UI.startAnimation(this.window.win, this.boxElement, this.boxAnim.urgent);
