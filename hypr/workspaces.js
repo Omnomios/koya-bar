@@ -28,13 +28,35 @@ class WorkspaceCell
             renderable: {
                 type: 'text',
                 string: `${this.workspace.name}`,
-                size: 14,
+                size: 12,
                 colour: "#fff",
-                font: FONT
+                font: FONT,
+                vAlign: 'center',
+                position: {x:0, y:6}
             },
-            item: { preferredSize: { w: this.size.x - 2, h: this.size.y - 4 } },
-            contentAlign: { x: 'center', y: 'center' }
+            item: {
+                size: { w: this.size.x, h: this.size.y }
+            },
+            contentAlign: { x: 'center', y: 'center' },
+            contentPositioning: 'contain'
         });
+
+        /*
+        const textId = UI.createElement(this.window.win, {
+            renderable: {
+                type: 'box',
+                aabb: { min: { x: 0, y: 0 }, max: {x: 10, y: 10} },
+                cornerRadius: [0,0,0,0],
+                cornerResolution: 0,
+                colour: "#f44",
+            },
+            item: {
+                size: {x: 2, y: 2}
+            },
+            contentAlign: { x: 'center', y: 'center' },
+            contentPositioning: 'contain'
+        });
+        */
 
         this.boxElement = UI.createElement(this.window.win, {
             renderable: {
@@ -44,7 +66,10 @@ class WorkspaceCell
                 cornerResolution: 2,
                 colour: "#444",
             },
-            item: { order: parseInt(this.workspace.id) }
+            item: {
+                size: {x: this.size.x, y: this.size.y},
+                order: parseInt(this.workspace.id)
+            }
         });
         UI.attach(this.window.win, this.boxElement, textId);
 
