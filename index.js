@@ -5,7 +5,9 @@ import * as Log from 'Koya/Log';
 import * as Hypr from 'Module/hypr';
 
 import { HyprWorkspaces } from './hypr/workspaces.js';
-//import { NetworkManager } from './lib/NetworkManager.js';
+import { TopBar } from './top-bar.js';
+
+import * as network from './lib/NetworkManager.js';
 
 const FONT = '/rom/font/Inter_18pt-Regular.ttf';
 const FONT_B = '/rom/font/Inter_18pt-Medium.ttf';
@@ -14,241 +16,143 @@ const FONT_B = '/rom/font/Inter_18pt-Medium.ttf';
 export default function main()
 {
 	Hypr.connect();
-	globalThis.workspaces = new HyprWorkspaces();
+
+	globalThis.workspaces = new HyprWorkspaces({
+		font: FONT,
+		background: "#444",
+		colour: "#fff",
+		highlight: ["#5fd1faff", "#5fd1fa33"],
+		urgent: ["#fa5f5fff", "#00000000"]
+	});
+
+	globalThis.topBar = new TopBar();
+
+	return;
+
+	const displays = Compositor.listDisplays().map(i=>i.display);
+
+	const size = {w: 600, h: 48};
 
 	const win = Compositor.createWindow({
-		location: 'top',
-		height: 30,
-		msaaSamples: 4,
+		role: 'overlay',
+		anchor: 'top',
+		size,
+		display: displays[0],
 		keyboardInteractivity: 'none',
-		acceptPointerEvents: false
+		acceptPointerEvents: false,
+		msaaSamples: 4
 	});
 
-	Log.debug(JSON.stringify(Compositor.getWindowInfo(win),null,2));
+	const background = UI.createElement(win, {
+		renderable: {
+			type: 'box',
+			aabb: { min: { x: 0, y: 0 }, max: {x: size.w, y: size.h} },
+			cornerRadius: { bl: 20, br: 20},
+			cornerResolution: { bl: 10, br: 10},
+			colour: "#ffff"
+		}
+	});
+	UI.attachRoot(win, background);
 
-    // Root
 	const root = UI.createElement(win, {
-		layout: { type: 'row', wrap: false, justifyContent: 'start', alignItems: 'start', size: { h: 30 } }
-	});
-	UI.attachRoot(win, root);
-
-	/*
-		Adding this to left causes the middle to drop.
 		renderable: {
 			type: 'box',
-			aabb: { min: { x:0, y:0 }, max: { x:150, y:30 } },
-			colour: "#1793D1",
-			cornerRadius: 2,
-			inset: 2, // thickness in pixels; renders only the ring
-		},
-
-	*/
-
-	const left = UI.createElement(win, {
-		renderable: {
-			type: 'box',
-			aabb: { min: { x:0, y:0 }, max: { x:140, y:30 } },
-			colour: "#1793D122",
-			cornerRadius: 2
-		},
-		item:{
-			size: {x:150, y:30}
-		}
-	});
-	UI.attach(win, root, left);
-
-	const leftContent = UI.createElement(win, {
-		renderable: {
-			type: 'box',
-			aabb: { min: { x:0, y:0 }, max: { x:140, y:30 } },
-			colour: "#1793D1",
-			cornerRadius: 4,
-			cornerResolution: 5,
-			inset: 1,
+			aabb: { min: { x: 0, y: 0 }, max: {x: size.w, y: size.h} },
+			cornerRadius: { bl: 20, br: 20},
+			cornerResolution: { bl: 10, br: 10},
+			colour: "#888",
+			inset: 2
 		},
 		layout: {
 			type: 'row',
 			wrap: false,
-			justifyContent: 'start',
-			gap: {x:3},
-			padding: { t: 1, r: 2, b: 0, l: 2 },
-		},
-		item:{
-			size: {x:150, y:30}
-		}
-	});
-	UI.attach(win, left, leftContent);
-
-	const distroBadge = UI.createElement(win, {
-		renderable: {
-			type: 'sprite',
-			texture: '/rom/image/arch.png',
-			frames: [
-				{
-					size:{x:20,y:20},
-					origin:{x:0,y:0},
-					aabb:{ min:{x:0, y:0}, max:{x:128,y:128} }
-				}
-			]
-		},
-		item: {
-			size:{w: 27, h: 29}
-		},
-		contentAlign: { x:'center', y: 'center' }
-	});
-	UI.attach(win, leftContent, distroBadge);
-
-	const clockStack = UI.createElement(win, {
-		layout: {
-			type: 'column',
-			wrap: false,
-			justifyContent: 'start',
-			gap: {x: 4},
-			padding: { t: 2, r: 0, b: 2, l: 0 },
-		},
-		item: {
-			size:{w: 90, h: 29}
-		},
-	});
-	UI.attach(win, leftContent, clockStack);
-
-	function formatTimeHHMM(d) {
-		const h = String(d.getHours()).padStart(2, '0');
-		const m = String(d.getMinutes()).padStart(2, '0');
-		return `${h}:${m}`;
-	}
-	const timeText = UI.createElement(win, {
-		renderable: {
-			type: 'text',
-			string: formatTimeHHMM(new Date()),
-			size: 11,
-			font: FONT_B,
-			vAlign: 'start',
-			colour: '#fff',
-			letterSpacing: 2
-		},
-		contentAlign: { x: 'start', y: 'start' },
-		item: {
-			size: {w: 30}
-		}
-	});
-	UI.attach(win, clockStack, timeText);
-
-
-	function getOrdinalSuffix(day)
-	{
-		if(day >= 11 && day <= 13) return "th";
-		switch(day % 10)
-		{
-			case 1: return "st";
-			case 2: return "nd";
-			case 3: return "rd";
-			default: return "th";
-		}
-	}
-
-	function formatDateHuman(date)
-	{
-		const weekdays = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-		const months   = ["Jan","Feb","Mar","Apr","May","Jun",
-						"Jul","Aug","Sep","Oct","Nov","Dec"];
-
-		const dayNum  = date.getDate();
-		const suffix  = getOrdinalSuffix(dayNum);
-		const weekday = weekdays[date.getDay()];
-		const month   = months[date.getMonth()];
-
-		return `${weekday} ${dayNum}${suffix} ${month}`;
-	}
-
-	const dateText = UI.createElement(win, {
-		renderable: {
-			type: 'text',
-			string: formatDateHuman(new Date()),
-			size: 9,
-			font: FONT_B,
-			vAlign: 'start',
-			colour: '#fff',
-			letterSpacing: 3
-		},
-		contentAlign: { x: 'start', y: 'start' },
-		item: {
-			size: {w: 30}
-		}
-	});
-	UI.attach(win, clockStack, dateText);
-
-	setInterval(async () => {
-		UI.setTextString(win, timeText, formatTimeHHMM(new Date()));
-		UI.setTextString(win, dateText, formatDateHuman(new Date()));
-	}, 1000);
-
-
-
-
-	// Spacer L
-	const spacerL = UI.createElement(win, { item: { flexGrow: 1 } });
-	UI.attach(win, root, spacerL);
-
-	// Middle (true centered, no grow)
-	const middle = UI.createElement(win, {
-		layout: {
-			type: 'row',
-			wrap: false,
+			gap: { x: 1, y: 0 },
+			padding: { t: 10, r: 10, b: 10, l: 10 },
 			justifyContent: 'center',
 			alignItems: 'center',
-			padding: { t: 7, r: 0, b: 0, l: 0 },
+			size
 		}
 	});
-	UI.attach(win, root, middle);
+	UI.attach(win, background, root);
 
-	const titleText = UI.createElement(win, {
+	const anim = {
+		show: UI.addAnimation(win, background, [
+			{ time: 0.0,  position: { x: 0, y: -size.h }, ease: 'outCubic' },
+			{ time: 0.2,  position: { x: 0, y: -2 },      ease: 'inOutCubic'},
+			{ time: 0.25, position: { x: 0, y: -5 },      ease: 'inCubic'}
+		]),
+		hide: UI.addAnimation(win, background, [
+			{ time: 0.0, position: { x: 0, y: -5 }, ease: 'outCubic' },
+			{ time: 0.5, position: { x: 0, y: -size.h } }
+		]),
+		hidden: UI.addAnimation(win, background, [
+			{ time: 0, position: { x: 0, y: -size.h } }
+		])
+	};
+
+	const icon1 = UI.createElement(win, {
 		renderable: {
-			type: 'text',
-			string: '',
-			size: 14,
-			colour: '#eee',
-			font: FONT_B,
-			justify: 'center',
-			vAlign: 'start',
-			letterSpacing: 1.6
+			type: 'box',
+			aabb: { min: { x: 0, y: 0 }, max: {x: 24, y: 24} },
+			cornerRadius: 5,
+			cornerResolution: 3,
+			colour: "#f00"
 		},
-		contentAlign: { x: 'start', y: 'start' },
 		item: {
-			size:{h: 20}
+			size: {w: 24, h: 24}
 		}
 	});
-	UI.attach(win, middle, titleText);
+	UI.attach(win, root, icon1);
 
-	const titleBounce = UI.addAnimation(win, titleText, [
-		{ time: 0.0,  position:{x:0, y:0}, scale:{x:0.95, y:1}, ease: 'outQuad' },
-		{ time: 0.08, position:{x:0, y:3}, scale:{x:1.05, y:1}, ease: 'outQuad'  },
-		{ time: 1,    position:{x:0, y:0}, scale:{x:1, y:1}	  }
-	]);
-
-	Hypr.on('activewindow',({payload})=>{
-		const [windowClass, windowTitle] = payload.split(',');
-		UI.setTextString(win, titleText, windowTitle);
-		UI.startAnimation(win, titleText, titleBounce);
+	const icon2 = UI.createElement(win, {
+		renderable: {
+			type: 'box',
+			aabb: { min: { x: 0, y: 0 }, max: {x: 24, y: 24} },
+			cornerRadius: 5,
+			cornerResolution: 3,
+			colour: "#0f0"
+		},
+		item: {
+			size: {w: 24, h: 24}
+		}
 	});
+	UI.attach(win, root, icon2);
 
+	UI.startAnimation(win, background, anim.hidden);
+	setTimeout(() => {
+		UI.startAnimation(win, background, anim.show);
+	}, 1000);
 
-	// Spacer R
-	const spacerR = UI.createElement(win, { item: { flexGrow: 1 } });
-	UI.attach(win, root, spacerR);
-
-	// Right (fixed)
-	const right = UI.createElement(win, { layout: { type: 'row', wrap: false, alignItems: 'center' }, item: { preferredSize: { w: 80 } } });
-	UI.attach(win, root, right);
-
-	//globalThis.nm = new NetworkManager();
-
-	/*
 	(async () => {
-		const overview = await globalThis.nm.getOverview();
-		Log.debug(JSON.stringify(overview, null, 2));
+
+		const connections = [];
+		const modem = [
+			await network.getModem(0).catch((e)=>{return false;}),
+			await network.getModem(1).catch((e)=>{return false;})
+		];
+
+		/*
+		network.activityMonitor((event) => {
+			Log.debug(JSON.stringify(event, null, 2));
+		});
+		*/
+
+		try
+		{
+			const allConnections = await network.getAllDeviceInfoIPDetail(false);
+			//Log.debug(JSON.stringify(allConnections, null, 2));
+			for(const connection of allConnections)
+			{
+			}
+
+		}
+		catch (e)
+		{
+			Log.error(e.message);
+		}
+
+
 	})();
-	*/
 
 	Event.on('cleanup', ()=>{
 		Log.debug('close');

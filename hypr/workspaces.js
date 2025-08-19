@@ -3,12 +3,11 @@ import * as UI from 'Koya/UserInterface';
 import * as Log from 'Koya/Log';
 import * as Hypr from 'Module/hypr';
 
-const FONT = '/rom/font/DroidSansMNerdFont-Regular.otf';
-
 class WorkspaceCell
 {
-    constructor (window, workspace)
+    constructor (window, workspace, config = {})
     {
+        this.config = config;
         this.size = {x:26, y:24};
         this.window = window;
         this.workspace = workspace;
@@ -29,8 +28,8 @@ class WorkspaceCell
                 type: 'text',
                 string: `${this.workspace.name}`,
                 size: 12,
-                colour: "#fff",
-                font: FONT,
+                colour: this.config.colour,
+                font: this.config.font,
                 vAlign: 'center',
                 position: {x:0, y:6}
             },
@@ -40,23 +39,6 @@ class WorkspaceCell
             contentAlign: { x: 'center', y: 'center' },
             contentPositioning: 'contain'
         });
-
-        /*
-        const textId = UI.createElement(this.window.win, {
-            renderable: {
-                type: 'box',
-                aabb: { min: { x: 0, y: 0 }, max: {x: 10, y: 10} },
-                cornerRadius: [0,0,0,0],
-                cornerResolution: 0,
-                colour: "#f44",
-            },
-            item: {
-                size: {x: 2, y: 2}
-            },
-            contentAlign: { x: 'center', y: 'center' },
-            contentPositioning: 'contain'
-        });
-        */
 
         this.boxElement = UI.createElement(this.window.win, {
             renderable: {
@@ -79,7 +61,7 @@ class WorkspaceCell
                 aabb: { min: { x: 0, y: 0 }, max: { x: this.size.x, y: 4 } },
                 cornerRadius: [2,2,0,0],
                 cornerResolution: 2,
-                colour: "#5fd1fa"
+                colour: this.config.highlight[0]
             }
         });
         UI.attach(this.window.win, this.boxElement, this.topLine);
@@ -120,14 +102,14 @@ class WorkspaceCell
 
         this.toplineAnim = {
             focus: UI.addAnimation(this.window.win, this.topLine, [
-                { time: 0.0, colour:"#5fd1fa", ease: 'outQuad' },
-                { time: 0.2, colour:"#5fd1fa33", ease: 'inQuad' },
-                { time: 0.8, colour:"#5fd1fa", looping: true},
+                { time: 0.0, colour:this.config.highlight[0], ease: 'outQuad' },
+                { time: 0.2, colour:this.config.highlight[1], ease: 'inQuad' },
+                { time: 0.8, colour:this.config.highlight[0], looping: true},
             ]),
             urgent: UI.addAnimation(this.window.win, this.topLine, [
-                { time: 0.0, colour:"#fa5f5fff" },
-                { time: 0.5, colour:"#00000000" },
-                { time: 1.0, colour:"#fa5f5fff", looping: true},
+                { time: 0.0, colour:this.config.urgent[0] },
+                { time: 0.5, colour:this.config.urgent[1] },
+                { time: 1.0, colour:this.config.urgent[0], looping: true},
             ])
         }
 
@@ -174,8 +156,9 @@ class WorkspaceCell
 
 class DisplayWindow
 {
-    constructor (display)
+    constructor (display, config = {})
     {
+        this.config = config;
         this.monitor = display;
         this.hideTimer = 0;
         this.visible = true;
@@ -184,16 +167,12 @@ class DisplayWindow
     createUI ()
     {
         // If it already exists, tear it down
-        if(this.win)
-        {
-            Compositor.destroyWindow(this.win);
-        }
+        if(this.win) Compositor.destroyWindow(this.win);
 
         this.win = Compositor.createWindow({
-            location: 'floating',
+            role: 'overlay',
             anchor: 'bottom-left',
-            height: 32,
-            width: 500,
+            size: {w: 250, h: 32},
             display: this.monitor,
             keyboardInteractivity: 'none',
             acceptPointerEvents: false,
@@ -214,19 +193,19 @@ class DisplayWindow
 
         this.anim = {
             show: UI.addAnimation(this.win, this.root, [
-                { time: 0.0, position: { x: 0, y: 24 }, ease: 'outQuad' },
+                { time: 0.0, position: { x: 0, y: 32 }, ease: 'outQuad' },
                 { time: 0.25, position: { x: 0, y: 0 } }
             ]),
             hide: UI.addAnimation(this.win, this.root, [
                 { time: 0.0, position: { x: 0, y: 0 }, ease: 'outQuad' },
-                { time: 0.25, position: { x: 0, y: 24 } }
+                { time: 0.25, position: { x: 0, y: 32 } }
             ])
         };
     }
 
     addCell (workspace)
     {
-        return new WorkspaceCell(this, workspace);
+        return new WorkspaceCell(this, workspace, this.config);
     }
 
     show (locked = false)
@@ -253,8 +232,9 @@ class DisplayWindow
 
 export class HyprWorkspaces
 {
-    constructor ()
+    constructor (config)
     {
+        this.config = config;
         this.displayWindow = {};
         this.workspaceCell = {};
 
@@ -346,7 +326,7 @@ export class HyprWorkspaces
         {
             if(!this.displayWindow[workspace.monitor])
             {
-                this.displayWindow[workspace.monitor] = new DisplayWindow(workspace.monitor);
+                this.displayWindow[workspace.monitor] = new DisplayWindow(workspace.monitor, this.config);
                 this.displayWindow[workspace.monitor].createUI();
                 this.displayWindow[workspace.monitor].show();
             }
