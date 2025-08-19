@@ -19,18 +19,18 @@ export default function main()
 
 	globalThis.workspaces = new HyprWorkspaces({
 		font: FONT,
-		background: "#444",
+		background: [0,0,0,0.75],
 		colour: "#fff",
 		highlight: ["#5fd1faff", "#5fd1fa33"],
-		urgent: ["#fa5f5fff", "#00000000"]
+		urgent:    ["#fa5f5fff", "#00000000"]
 	});
 
 	globalThis.topBar = new TopBar();
 
-	return;
-
 	const displays = Compositor.listDisplays().map(i=>i.display);
 
+
+	return;
 	const size = {w: 600, h: 48};
 
 	const win = Compositor.createWindow({
@@ -66,12 +66,37 @@ export default function main()
 		layout: {
 			type: 'row',
 			wrap: false,
-			gap: { x: 1, y: 0 },
-			padding: { t: 10, r: 10, b: 10, l: 10 },
-			justifyContent: 'center',
+			gap: 10,
+			padding: { t: 10, r: 10, b: 10, l: 15 },
+			justifyContent: 'begin',
 			alignItems: 'center',
 			size
-		}
+		},
+		child: [
+			{
+				id: 'connection-icon',
+				renderable: {
+					type: 'box',
+					aabb: { min: { x: 0, y: 0 }, max: {x: 30, y: 30} },
+					cornerRadius: 5,
+					cornerResolution: 3,
+					colour: "#f00"
+				}
+			},
+			{
+				id: 'connection-text',
+				renderable: {
+					type: 'box',
+					aabb: { min: { x: 0, y: 0 }, max: {x: 24, y: 24} },
+					cornerRadius: 5,
+					cornerResolution: 3,
+					colour: "#0f0"
+				},
+				item: {
+					size: {w: 24, h: 24}
+				}
+			}
+		]
 	});
 	UI.attach(win, background, root);
 
@@ -89,34 +114,6 @@ export default function main()
 			{ time: 0, position: { x: 0, y: -size.h } }
 		])
 	};
-
-	const icon1 = UI.createElement(win, {
-		renderable: {
-			type: 'box',
-			aabb: { min: { x: 0, y: 0 }, max: {x: 24, y: 24} },
-			cornerRadius: 5,
-			cornerResolution: 3,
-			colour: "#f00"
-		},
-		item: {
-			size: {w: 24, h: 24}
-		}
-	});
-	UI.attach(win, root, icon1);
-
-	const icon2 = UI.createElement(win, {
-		renderable: {
-			type: 'box',
-			aabb: { min: { x: 0, y: 0 }, max: {x: 24, y: 24} },
-			cornerRadius: 5,
-			cornerResolution: 3,
-			colour: "#0f0"
-		},
-		item: {
-			size: {w: 24, h: 24}
-		}
-	});
-	UI.attach(win, root, icon2);
 
 	UI.startAnimation(win, background, anim.hidden);
 	setTimeout(() => {

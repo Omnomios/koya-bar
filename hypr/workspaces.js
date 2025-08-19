@@ -46,7 +46,7 @@ class WorkspaceCell
                 aabb: { min: { x: 0, y: 0 }, max: {x: this.size.x, y: this.size.y} },
                 cornerRadius: [2,2,0,0],
                 cornerResolution: 2,
-                colour: "#444",
+                colour: this.config.background,
             },
             item: {
                 size: {x: this.size.x, y: this.size.y},
