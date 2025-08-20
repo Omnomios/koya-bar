@@ -28,7 +28,7 @@ export default function main()
 		font: FONT_B,
 		iconFont: ICON_FONT,
 		colour: '#fff',
-		alertColour: '#ff5511'
+		alertColour: '#ff5511',
 	});
 
 	const displays = Compositor.listDisplays().map(i=>i.display);

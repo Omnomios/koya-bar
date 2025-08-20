@@ -15,8 +15,8 @@ export class Network
                 type:'row',
                 wrap: true,
                 justifyContent: 'center',
-                alignItems: 'end',
-                gap:4
+                alignItems: 'center',
+                gap: 1
             },
             item: { size:{w: this.config.thickness, h: 20} },
         });
@@ -75,9 +75,9 @@ export class Network
                             colour: this.config.colour,
                             font: this.config.iconFont,
                             string: '?',
-                            size: 16,
+                            size: 12,
                         },
-                        item:{size:{w:18,h:18}},
+                        item:{size:{w:18, h:18}},
                         contentAlign: { x: 'center', y: 'center' },
                         child:[
                             {

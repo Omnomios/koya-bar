@@ -22,7 +22,7 @@ export class Bar
             thickness: config.thickness,
             msaaSamples: 4,
             keyboardInteractivity: 'none',
-            acceptPointerEvents: false
+            acceptPointerEvents: true
         });
         this.config = config;
 
@@ -33,6 +33,7 @@ export class Bar
 
         // Root
         const root = UI.createElement(this.win, {
+            id: 'root',
             renderable: {
                 type: 'box',
                 colour: [0,0,0,0.5],
@@ -48,6 +49,7 @@ export class Bar
             },
             child: [
                 { // Icon holder
+                    id: 'top_modules',
                     child: [
                         {
                             id: 'archBlur',
@@ -82,14 +84,16 @@ export class Bar
                         },
                     ]
                 },
-                { item: { flexGrow: 1 } },
+                { id: 'spacer_1', item: { flexGrow: 1 } },
                 {
+                    id: 'centre_modules',
                     item: {
-                        size:{w: 48, h: 48}
+                        size:{ h: 48 }
                     }
                 },
-                { item: { flexGrow: 1 } },
+                { id: 'spacer_2', item: { flexGrow: 1 } },
                 {
+                    id: 'bottom_modules',
                     layout: {
                         type: 'column',
                         justifyContent: 'end',
