@@ -11,8 +11,7 @@ This project is WIP.
 1. Install Koya and the Hypr plugin.
    - See the Koya install docs and ensure the `hypr` native module is available to Koya.
 2. Copy this repo into ~/.config/koya
-3. Make sure the shaders are provided by the package or copy them into ~/.config/koya/shaders
-4. Run Koya
+3. Run Koya
 
 Notes:
 - Requires a Wayland session (e.g., Hyprland) and Vulkan drivers.
@@ -27,7 +26,7 @@ Notes:
 
 ### Customize quickly
 
-All customisation is exposed in a config object in index.js
+All customisation is exposed via a config object in index.js
 
 ```js
 	globalThis.workspaces = new HyprWorkspaces({
