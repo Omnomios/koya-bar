@@ -23,18 +23,34 @@ export default function main()
 		urgent:    ['#fa5f5fff', '#00000000']
 	});
 
-	globalThis.topBar = new Bar({
+	globalThis.statusBar = new Bar({
+		monitor: '', // Defaults to primary
 		thickness: 48,
 		font: FONT_B,
 		iconFont: ICON_FONT,
+		background: [0,0,0,0.5],
 		colour: '#fff',
 		alertColour: '#ff5511',
-	});
+		clock: {
+			// dayjs format string
+			shortTime: 'HH:mm',
+			longTime:  'HH:mm:ss',
+			shortDate: 'ddd Do MMM',
+			longDate:  'dddd Do MMMM',
 
-	const displays = Compositor.listDisplays().map(i=>i.display);
-
-	Event.on('cleanup', ()=>{
-		Log.debug('close');
+			calendar:{
+				emptyCell:  '#ffffff0a',
+				normalCell: '#ffffff22',
+				todayCell:  '#5fd1faff',
+				normalDay: '#fff',
+				todayDay:  '#000',
+				weekText:  '#aaa',
+				showISOWeek: true
+			}
+		},
+		network: {
+			showUnavailable: ['wifi']
+		}
 	});
 }
 

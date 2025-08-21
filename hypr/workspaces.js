@@ -170,6 +170,7 @@ class DisplayWindow
         if(this.win) Compositor.destroyWindow(this.win);
 
         this.win = Compositor.createWindow({
+            namespace: 'koya',
             role: 'overlay',
             anchor: 'bottom-left',
             size: {w: 250, h: 32},

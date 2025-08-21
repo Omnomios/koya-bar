@@ -1,4 +1,4 @@
-import * as UI from 'Koya/UserInterface';
+import * as UI  from 'Koya/UserInterface';
 import * as Log from 'Koya/Log';
 
 import * as NetworkManager from '../../lib/NetworkManager.js';
@@ -68,6 +68,7 @@ export class Network
                     status: connection,
                     win: this.win,
                     parent: this.element,
+                    showUnavailable: this.config.network.showUnavailable.includes(connection.type),
                     crossIcon: -1,
                     element: UI.createElement(this.win, {
                         renderable: {
@@ -87,26 +88,38 @@ export class Network
                                     colour: this.config.alertColour,
                                     font: this.config.iconFont,
                                     string: '\uf00d',
-                                    size: 15,
-                                    position: {x:8, y:8}
+                                    size: 8,
+                                    position: {x:11, y:11}
                                 }
                             }
                         ]
                     }),
                     update: async function()
                     {
-                        if(this.crossIcon == -1) this.crossIcon = UI.getElementById(this.win, `${this.status.device}:cross`);
-                        this.status = await NetworkManager.getDeviceInfoIPDetail(this.status.device);
-                        UI.setEnabled(this.win, this.crossIcon, this.status.state == 'unavailable');
-                        UI.setTextString(this.win, this.element, connectionIcon[this.status.type]);
-                        UI.setTextColour(this.win, this.element, stateColour[this.status.state]);
+                        try
+                        {
+                            if(this.crossIcon == -1) this.crossIcon = UI.getElementById(this.win, `${this.status.device}:cross`);
+                            this.status = await NetworkManager.getDeviceInfoIPDetail(this.status.device);
+
+                            UI.detach(this.win, this.parent, this.element);
+
+                            if(this.status.state == 'unavailable' && !this.showUnavailable) return;
+
+                            UI.setEnabled(this.win, this.crossIcon, this.status.state == 'unavailable');
+                            UI.setTextString(this.win, this.element, connectionIcon[this.status.type]);
+                            UI.setTextColour(this.win, this.element, stateColour[this.status.state]);
+                            UI.attach(this.win, this.parent, this.element);
+                        }
+                        catch (e)
+                        {
+                            Log.error(e);
+                        }
                     }
                 });
 			}
 
             this.connections.forEach((i) => {
                 i.update();
-                UI.attach(this.win, this.element, i.element);
             });
 		}
 		catch (e)

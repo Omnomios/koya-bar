@@ -1,33 +1,32 @@
 import * as Compositor from 'Koya/Compositor';
-import * as UI from 'Koya/UserInterface';
-import * as Image from 'Koya/Image';
-import * as Hypr from 'Module/hypr';
-import * as Log from 'Koya/Log';
+import * as UI         from 'Koya/UserInterface';
+import * as Image      from 'Koya/Image';
+import * as Hypr       from 'Module/hypr';
+import * as Log        from 'Koya/Log';
 
 import { DateTime } from './module/datetime.js'
-import { Network } from './module/network.js'
+import { Network }  from './module/network.js'
 
-const FONT = '/rom/font/Inter_18pt-Regular.ttf';
 const FONT_B = '/rom/font/Inter_18pt-Medium.ttf';
-//const FONT = '/rom/font/DroidSansMNerdFont-Regular.otf';
 
 export class Bar
 {
     constructor (config)
     {
+        this.config = config;
         this.win = Compositor.createWindow({
             namespace: 'koya-blur',
             role: 'bar',
             edge: 'left',
             thickness: config.thickness,
             msaaSamples: 4,
+            display: this.config.monitor,
             keyboardInteractivity: 'none',
             acceptPointerEvents: true
         });
-        this.config = config;
 
-        this.dateTime = new DateTime(this.win, config)
-        this.network = new Network(this.win, config)
+        this.dateTime = new DateTime(this.win, config);
+        this.network  = new Network(this.win, config);
 
         const blurred = Image.blur(this.win, { src: Image.load(this.win, {path: '/rom/image/arch.png', id: 'icon/arch'}), radius: 6, passes: 2 });
 
@@ -36,7 +35,7 @@ export class Bar
             id: 'root',
             renderable: {
                 type: 'box',
-                colour: [0,0,0,0.5],
+                colour: this.config.background,
                 cornerRadius: {tr: 4,br: 4},
                 cornerResolution: {tr: 2,br: 2},
             },
