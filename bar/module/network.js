@@ -51,8 +51,8 @@ export class Network
 
         const stateColour = {
             'connected': this.config.colour,
-            'disconnected':'#444',
-            'unavailable':'#444'
+            'disconnected':this.config.disabledColour,
+            'unavailable':this.config.disabledColour
         };
 
 		try

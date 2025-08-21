@@ -2,6 +2,10 @@
 
 This folder contains a small demo bar built on top of Koya. It showcases a basic, real‑world use of Koya's compositor and UI APIs together with the Hyprland plugin. The bar pops up near the bottom‑left when workspaces change, animates, and auto‑hides.
 
+Left hand status bar features a clock, with popout calendar and network status icons.
+
+This project is WIP.
+
 ### Quick start
 
 1. Install Koya and the Hypr plugin.
@@ -23,15 +27,48 @@ Notes:
 
 ### Customize quickly
 
-- Font: edit the `FONT` constant at the top of `hypr/workspaces.js` to point to a font on your system.
-- Colours and sizes: tweak colour strings (e.g., `"#444"`, `"#5fd1fa"`) and dimensions in `WorkspaceCell` and `DisplayWindow`.
-- Positioning: change the window creation options in `DisplayWindow.createUI()` (e.g., `location`, `anchor`, `width`, `height`).
-- Hide timing: adjust the timeout in `DisplayWindow.show()`.
+All customisation is exposed in a config object in index.js
 
-### File structure
+```js
+	globalThis.workspaces = new HyprWorkspaces({
+		font: FONT,
+		background: [0,0,0,0.75],
+		colour: '#fff',
+		highlight: ['#5fd1faff', '#5fd1fa33'],
+		urgent:    ['#fa5f5fff', '#00000000']
+	});
 
-- `index.js`: connects to Hyprland and instantiates the workspace UI.
-- `hypr/workspaces.js`: UI layout, animations, and event handling.
+	globalThis.statusBar = new Bar({
+		monitor: '', // Defaults to primary
+		thickness: 48,
+		font: FONT_B,
+		iconFont: ICON_FONT,
+		background: [0,0,0,0.5],
+		colour:         '#ffffff',
+		disabledColour: '#444444',
+		alertColour:    '#ff5511',
+		clock: {
+			// dayjs format string
+			shortTime: 'HH:mm',
+			longTime:  'HH:mm:ss',
+			shortDate: 'ddd Do MMM',
+			longDate:  'dddd Do MMMM',
+
+			calendar:{
+				emptyCell:  '#ffffff0a',
+				normalCell: '#ffffff22',
+				todayCell:  '#5fd1faff',
+				normalDay: '#fff',
+				todayDay:  '#000',
+				weekText:  '#aaa',
+				showISOWeek: true
+			}
+		},
+		network: {
+			showUnavailable: ['wifi']
+		}
+	});
+```
 
 ### Build more
 

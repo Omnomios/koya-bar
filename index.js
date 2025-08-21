@@ -29,8 +29,9 @@ export default function main()
 		font: FONT_B,
 		iconFont: ICON_FONT,
 		background: [0,0,0,0.5],
-		colour: '#fff',
-		alertColour: '#ff5511',
+		colour:         '#ffffff',
+		disabledColour: '#444444',
+		alertColour:    '#ff5511',
 		clock: {
 			// dayjs format string
 			shortTime: 'HH:mm',
