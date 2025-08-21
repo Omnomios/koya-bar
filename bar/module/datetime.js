@@ -30,7 +30,107 @@ class Calandar
             msaaSamples: 4
         });
 
+        this.calendarId = this.buildCalendar();
 
+        this.root = UI.createElement(this.win, {
+            renderable: {
+                type: 'box',
+                colour: this.config.background,
+                cornerRadius: {tr: 10,br: 10},
+                cornerResolution: {tr: 8,br: 8},
+            },
+            contentAlign: 'fill',
+            layout:{
+                type: 'column',
+                gap:10,
+                padding:{l:32, r: 32}
+            },
+            onMouseExit: ()=>{
+                this.hide();
+            },
+            child:[
+                {
+                    id: 'fullTimeText',
+                    renderable: {
+                        type: 'text',
+                        string: dayjs().format(this.config.clock.longTime),
+                        size: 40,
+                        font: this.config.font,
+                        vAlign: 'start',
+                        colour: this.config.colour,
+                        letterSpacing: 2
+                    },
+                    contentAlign: { x: 'start', y: 'center' },
+                    item:{
+                        size:{h:48, w: "auto"}
+                    }
+                },
+                {
+                    id: 'fullDateText',
+                    renderable: {
+                        type: 'text',
+                        string: dayjs().format(this.config.clock.longDate),
+                        size: 13,
+                        font: this.config.font,
+                        vAlign: 'start',
+                        colour: '#fff',
+                        letterSpacing: 3,
+                    },
+                    item:{
+                        size:{h:20, w: "auto"}
+                    }
+                },
+                this.calendarId
+            ]
+        });
+        UI.attachRoot(this.win, this.root);
+
+        this.timeText = UI.getElementById(this.win, 'fullTimeText');
+        this.dateText = UI.getElementById(this.win, 'fullDateText');
+
+        this.rootAnim = {
+            show: UI.addAnimation(this.win, this.root , [
+                { time: 0.0,  position:{x:-250, y:0}, colour: [0,0,0,0], ease: 'outQuad' },
+                { time: 0.2,  position:{x:0,    y:0}, colour: this.config.background }
+            ]),
+            hide: UI.addAnimation(this.win, this.root , [
+                { time: 0.0,  position:{x:0,    y:0}, colour: this.config.background, ease: 'outQuad' },
+                { time: 0.1,  position:{x:-250, y:0}, colour: [0,0,0,0]  }
+            ]),
+            hidden: UI.addAnimation(this.win, this.root , [
+                { time: 0.0,  position:{x:-250, y:0} },
+            ]),
+        };
+
+        // When closed, stop rendering
+        UI.onAnimationEnd(this.win, this.root, this.rootAnim.hide, ()=>{
+            Compositor.setWindowRenderingEnabled(this.win, false);
+        });
+
+        // Start hidden
+        UI.startAnimation(this.win, this.root, this.rootAnim.hidden);
+
+        for(const {element, hidden} of this.cellAnimation)
+        {
+            UI.startAnimation(this.win, element, hidden);
+        }
+
+        Compositor.setWindowRenderingEnabled(this.win, false);
+    }
+
+    /* Make sure current calendar is valid */
+    checkCalendar ()
+    {
+        const currentDay = dayjs().date();
+        if(this.calandarFor == currentDay) return;
+        UI.detach(this.win, this.root, this.calendarId);
+        UI.destroyElement(this.win, this.calandarId);
+        this.calandarId = this.buildCalendar();
+        UI.attach(this.win, this.root, this.calandarId);
+    }
+
+    buildCalendar ()
+    {
         // First day of month
         const firstDay = dayjs().startOf("month");
         // ISO week number (Monday start)
@@ -38,6 +138,8 @@ class Calandar
         const firstDayNumber = firstDay.day();
         const daysInMonth = dayjs().daysInMonth();
         const currentDay = dayjs().date();
+
+        this.calandarFor = currentDay;
 
         // Build the calendar
         const cellSize = 24;
@@ -178,98 +280,18 @@ class Calandar
             w++;
         }
 
-        this.root = UI.createElement(this.win, {
-            renderable: {
-                type: 'box',
-                colour: this.config.background,
-                cornerRadius: {tr: 10,br: 10},
-                cornerResolution: {tr: 8,br: 8},
+        return UI.createElement(this.win, {
+            id: 'calendar',
+            layout: {
+                type:'column',
+                gap: 2
             },
-            contentAlign: 'fill',
-            layout:{
-                type: 'column',
-                gap:10,
-                padding:{l:32, r: 32}
+            item: {
+                flexGrow: 1,
+                order: 100
             },
-            onMouseExit: ()=>{
-                this.hide();
-            },
-            child:[
-                {
-                    id: 'fullTimeText',
-                    renderable: {
-                        type: 'text',
-                        string: dayjs().format(this.config.clock.longTime),
-                        size: 40,
-                        font: this.config.font,
-                        vAlign: 'start',
-                        colour: this.config.colour,
-                        letterSpacing: 2
-                    },
-                    contentAlign: { x: 'start', y: 'center' },
-                    item:{
-                        size:{h:48, w: "auto"}
-                    }
-                },
-                {
-                    id: 'fullDateText',
-                    renderable: {
-                        type: 'text',
-                        string: dayjs().format(this.config.clock.longDate),
-                        size: 13,
-                        font: this.config.font,
-                        vAlign: 'start',
-                        colour: '#fff',
-                        letterSpacing: 3,
-                    },
-                    item:{
-                        size:{h:20, w: "auto"}
-                    }
-                },
-                {
-                    id: 'calendar',
-                    item: { flexGrow: 1 },
-                    layout: {
-                        type:'column',
-                        gap: 2
-                    },
-                    child: calendarRows
-                },
-            ]
+            child: calendarRows
         });
-        UI.attachRoot(this.win, this.root);
-
-        this.timeText = UI.getElementById(this.win, 'fullTimeText');
-        this.dateText = UI.getElementById(this.win, 'fullDateText');
-
-        this.rootAnim = {
-            show: UI.addAnimation(this.win, this.root , [
-                { time: 0.0,  position:{x:-250, y:0}, colour: [0,0,0,0], ease: 'outQuad' },
-                { time: 0.2,  position:{x:0,    y:0}, colour: this.config.background }
-            ]),
-            hide: UI.addAnimation(this.win, this.root , [
-                { time: 0.0,  position:{x:0,    y:0}, colour: this.config.background, ease: 'outQuad' },
-                { time: 0.1,  position:{x:-250, y:0}, colour: [0,0,0,0]  }
-            ]),
-            hidden: UI.addAnimation(this.win, this.root , [
-                { time: 0.0,  position:{x:-250, y:0} },
-            ]),
-        };
-
-        // When closed, stop rendering
-        UI.onAnimationEnd(this.win, this.root, this.rootAnim.hide, ()=>{
-            Compositor.setWindowRenderingEnabled(this.win, false);
-        });
-
-        // Start hidden
-        UI.startAnimation(this.win, this.root, this.rootAnim.hidden);
-
-        for(const {element, hidden} of this.cellAnimation)
-        {
-            UI.startAnimation(this.win, element, hidden);
-        }
-
-        Compositor.setWindowRenderingEnabled(this.win, false);
     }
 
     startClock ()
@@ -290,6 +312,7 @@ class Calandar
     preWarm ()
     {
         Compositor.setWindowRenderingEnabled(this.win, true);
+        this.checkCalendar();
     }
 
     show (cb=()=>{})

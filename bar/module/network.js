@@ -40,7 +40,7 @@ export class Network
                 return;
             }
 
-            Log.debug(event.interface);
+            //Log.debug(event.interface);
             //Log.debug(JSON.stringify(event, null, 2));
 		});
 
@@ -61,7 +61,7 @@ export class Network
 
             const relevantConnections = allConnections.filter(i=>['ethernet','wifi'].includes(i.type));
 
-            Log.debug(JSON.stringify(relevantConnections, null, 2));
+            //Log.debug(JSON.stringify(relevantConnections, null, 2));
 			for(const connection of relevantConnections)
 			{
                 this.connections.push({
