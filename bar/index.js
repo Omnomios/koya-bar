@@ -49,24 +49,16 @@ export class Bar
             child: [
                 { // Icon holder
                     id: 'top_modules',
+                    layout: {
+                        type: 'column',
+                        wrap: false,
+                        justifyContent: 'start',
+                        alignItems: 'center',
+                    },
+                    item: {
+                        size: { w: 'auto', h: 200 }
+                    },
                     child: [
-                        {
-                            id: 'archBlur',
-                            renderable: {
-                                type: 'sprite',
-                                texture: blurred,
-                                frames: [
-                                    {
-                                        size:{x:32,y:32},
-                                        origin:{x:16,y:16},
-                                        aabb:{ min:{x:0, y:0}, max:{x:128,y:128} },
-                                        color: [1,1,1,0.75]
-                                    }
-                                ],
-                                position: {x:24,y:22},
-                                scale:{x:1.3,y:1.3}
-                            },
-                        },
                         {
                             renderable: {
                                 type: 'sprite',
@@ -78,8 +70,11 @@ export class Bar
                                         aabb:{ min:{x:0, y:0}, max:{x:128,y:128} }
                                     }
                                 ],
-                                position: {x:24,y:24}
                             },
+                            item: {
+                                size: { w:48, h:48 }
+                            },
+                            contentAlign: { x: 'center', y: 'center' },
                         },
                     ]
                 },
@@ -160,7 +155,6 @@ export class Bar
         ]);
         UI.startAnimation(this.win, archBlur, archAnim);
 
-
         const titleBounce = UI.addAnimation(this.win, titleText, [
             { time: 0.0,  position:{x:0, y:0}, scale:{x:0.95, y:1}, ease: 'outQuad' },
             { time: 0.08, position:{x:0, y:3}, scale:{x:1.05, y:1}, ease: 'outQuad'  },
@@ -172,7 +166,6 @@ export class Bar
             UI.setTextString(this.win, titleText, windowTitle);
             UI.startAnimation(this.win, titleText, titleBounce);
         });
-
 
         // Right (fixed)
         const right = UI.createElement(this.win, { layout: { type: 'row', wrap: false, alignItems: 'center' }, item: { preferredSize: { w: 80 } } });

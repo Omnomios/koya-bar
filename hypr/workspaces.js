@@ -202,6 +202,11 @@ class DisplayWindow
                 { time: 0.25, position: { x: 0, y: 32 } }
             ])
         };
+
+        // Put the window to sleep when the animation is done.
+        UI.onAnimationEnd(this.win, this.root, this.anim.hide, () => {
+            Compositor.setWindowRenderingEnabled(this.win, false);
+        });
     }
 
     addCell (workspace)
@@ -211,7 +216,11 @@ class DisplayWindow
 
     show (locked = false)
     {
-        if(!this.visible) UI.startAnimation(this.win, this.root, this.anim.show);
+        if(!this.visible)
+        {
+            Compositor.setWindowRenderingEnabled(this.win, true);
+            UI.startAnimation(this.win, this.root, this.anim.show);
+        }
         this.visible = true;
         clearTimeout(this.hideTimer);
 
