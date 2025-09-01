@@ -36,7 +36,8 @@ export class Wallpaper
             const win = Compositor.createWindow({
                 role: 'background',
                 namespace: 'koya-background',
-                display: display.display
+                display: display.display,
+                exclusiveZone: -1
             });
             this.backgrounds[display.display].win = win;
 
