@@ -30,8 +30,7 @@ class WorkspaceCell
                 size: 12,
                 colour: this.config.colour,
                 font: this.config.font,
-                vAlign: 'center',
-                position: {x:0, y:6}
+                vAlign: 'center'
             },
             item: {
                 size: { w: this.size.x, h: this.size.y }

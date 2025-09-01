@@ -43,7 +43,7 @@ class Calandar
             layout:{
                 type: 'column',
                 gap:10,
-                padding:{l:32, r: 32}
+                padding:{l:32, r: 32, t: 16}
             },
             onMouseExit: ()=>{
                 this.hide();
@@ -73,7 +73,7 @@ class Calandar
                         size: 13,
                         font: this.config.font,
                         vAlign: 'start',
-                        colour: '#fff',
+                        colour: this.config.colour,
                         letterSpacing: 3,
                     },
                     item:{
@@ -90,12 +90,12 @@ class Calandar
 
         this.rootAnim = {
             show: UI.addAnimation(this.win, this.root , [
-                { time: 0.0,  position:{x:-250, y:0}, colour: [0,0,0,0], ease: 'outQuad' },
-                { time: 0.2,  position:{x:0,    y:0}, colour: this.config.background }
+                { time: 0.0,  position:{x:-250, y:0}, opacity: 0, ease: 'outQuad' },
+                { time: 0.2,  position:{x:0,    y:0}, opacity: 1 }
             ]),
             hide: UI.addAnimation(this.win, this.root , [
-                { time: 0.0,  position:{x:0,    y:0}, colour: this.config.background, ease: 'outQuad' },
-                { time: 0.1,  position:{x:-250, y:0}, colour: [0,0,0,0]  }
+                { time: 0.0,  position:{x:0,    y:0}, opacity: 1, ease: 'outQuad' },
+                { time: 0.1,  position:{x:-250, y:0}, opacity: 0 }
             ]),
             hidden: UI.addAnimation(this.win, this.root , [
                 { time: 0.0,  position:{x:-250, y:0} },
@@ -104,7 +104,9 @@ class Calandar
 
         // When closed, stop rendering
         UI.onAnimationEnd(this.win, this.root, this.rootAnim.hide, ()=>{
-            Compositor.setWindowRenderingEnabled(this.win, false);
+            setTimeout(() => {
+                Compositor.setWindowRenderingEnabled(this.win, false);
+            }, 100);
         });
 
         // Start hidden
@@ -397,7 +399,7 @@ export class DateTime
                         size: 9,
                         font: this.config.font,
                         vAlign: 'start',
-                        colour: '#fff',
+                        colour: this.config.colour,
                         letterSpacing: 3,
                         rotation: -90,
                     },

@@ -28,8 +28,6 @@ export class Bar
         this.dateTime = new DateTime(this.win, config);
         this.network  = new Network(this.win, config);
 
-        const blurred = Image.blur(this.win, { src: Image.load(this.win, {path: '/rom/image/arch.png', id: 'icon/arch'}), radius: 6, passes: 2 });
-
         // Root
         const root = UI.createElement(this.win, {
             id: 'root',
