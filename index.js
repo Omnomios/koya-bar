@@ -14,20 +14,22 @@ const ICON_FONT = '/rom/font/DroidSansMNerdFont-Regular.otf';
 
 export default function main()
 {
-
-	globalThis.wallpaper = new Wallpaper({
-		'*': '/rom/image/wallhaven-vggdol.jpg'
-		/*
-		'*': 'file:///home/user/nyan-cat-rainbow.gif'  // Look, just because you can, doesn't mean you should.
-		*/
-	});
-
 	Hypr.connect();
+	globalThis.wallpaper = new Wallpaper({
+		fadeTime: 1 // seconds
+	});
+	globalThis.wallpaper.changeTo('/rom/image/wallhaven-yxrkm7.png');
+
+	// Demo of wallpaper cycling.
+	// This could also be configured to change wallpaper based on workspace
+	setTimeout(() => { globalThis.wallpaper.changeTo('/rom/image/wallhaven-gpelxl.jpg'); }, 30000);
+	setTimeout(() => { globalThis.wallpaper.changeTo('/rom/image/wallhaven-yxrkm7.png'); }, 60000);
+
 	globalThis.workspaces = new HyprWorkspaces({
 		font: FONT,
 		background: '#424153ff',
 		colour: '#dddddd',
-		highlight: ['#663399ff', '#66339933'],
+		highlight: ['#dcbdfaff', '#66339933'],
 		urgent:    ['#fa5f5fff', '#00000000']
 	});
 
@@ -52,7 +54,7 @@ export default function main()
 				normalCell: '#ffffff22',
 				todayCell:  '#663399ff',
 				normalDay: '#fff',
-				todayDay:  '#000',
+				todayDay:  '#dcbdfaff',
 				weekText:  '#aaa',
 				showISOWeek: false
 			}

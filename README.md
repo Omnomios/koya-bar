@@ -29,11 +29,21 @@ Notes:
 All customisation is exposed via a config object in index.js
 
 ```js
+	globalThis.wallpaper = new Wallpaper({
+		fadeTime: 1 // seconds
+	});
+	globalThis.wallpaper.changeTo('/rom/image/wallhaven-yxrkm7.png');
+
+	// Demo of wallpaper cycling.
+	// This could also be configured to change wallpaper based on workspace
+	setTimeout(() => { globalThis.wallpaper.changeTo('/rom/image/wallhaven-gpelxl.jpg'); }, 30000);
+	setTimeout(() => { globalThis.wallpaper.changeTo('/rom/image/wallhaven-yxrkm7.png'); }, 60000);
+
 	globalThis.workspaces = new HyprWorkspaces({
 		font: FONT,
-		background: [0,0,0,0.75],
-		colour: '#fff',
-		highlight: ['#5fd1faff', '#5fd1fa33'],
+		background: '#424153ff',
+		colour: '#dddddd',
+		highlight: ['#dcbdfaff', '#66339933'],
 		urgent:    ['#fa5f5fff', '#00000000']
 	});
 
@@ -42,8 +52,8 @@ All customisation is exposed via a config object in index.js
 		thickness: 48,
 		font: FONT_B,
 		iconFont: ICON_FONT,
-		background: [0,0,0,0.5],
-		colour:         '#ffffff',
+		background:     '#00000033',
+		colour:         '#dddddd',
 		disabledColour: '#444444',
 		alertColour:    '#ff5511',
 		clock: {
@@ -56,11 +66,11 @@ All customisation is exposed via a config object in index.js
 			calendar:{
 				emptyCell:  '#ffffff0a',
 				normalCell: '#ffffff22',
-				todayCell:  '#5fd1faff',
+				todayCell:  '#663399ff',
 				normalDay: '#fff',
-				todayDay:  '#000',
+				todayDay:  '#dcbdfaff',
 				weekText:  '#aaa',
-				showISOWeek: true
+				showISOWeek: false
 			}
 		},
 		network: {
