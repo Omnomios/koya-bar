@@ -40,7 +40,7 @@ export class Battery
                         colour: this.config.colour,
                         font: this.config.iconFont,
                         string: '\udb80\udc83',
-                        size: 14,
+                        size: 12,
                     },
                     contentAlign: { x: 'start', y: 'center' }
                 }
