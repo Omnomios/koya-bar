@@ -6,6 +6,7 @@ import * as Log        from 'Koya/Log';
 
 import { DateTime } from './module/datetime.js'
 import { Network }  from './module/network.js'
+import { Battery }  from './module/battery.js'
 
 const FONT_B = '/rom/font/Inter_18pt-Medium.ttf';
 
@@ -27,6 +28,7 @@ export class Bar
 
         this.dateTime = new DateTime(this.win, config);
         this.network  = new Network(this.win, config);
+        this.battery  = new Battery(this.win, config);
 
         // Root
         const root = UI.createElement(this.win, {
@@ -90,14 +92,15 @@ export class Bar
                         type: 'column',
                         justifyContent: 'end',
                         alignItems: 'center',
-                        gap: 16
+                        gap: 8
                     },
                     item: {
                         size:{ h: 200 }
                     },
                     child: [
                         this.dateTime.element,
-                        this.network.element
+                        this.network.element,
+                        this.battery.element
                     ]
                 },
             ]
@@ -106,6 +109,7 @@ export class Bar
 
         this.dateTime.init();
         this.network.init();
+        this.battery.init();
 
         const archBlur = UI.getElementById(this.win, 'archBlur');
 

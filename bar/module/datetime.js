@@ -356,7 +356,7 @@ export class DateTime
             },
             item: {
                 size: {h: 100},
-                order: 100
+                order: this.config.clock.order
             },
             onMouseEnter: (e) => {
                 if(!this.calandar.visible) UI.startAnimation(this.win, this.element, this.anim.focus);

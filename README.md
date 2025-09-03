@@ -2,7 +2,9 @@
 
 This folder contains a small demo bar built on top of Koya. It showcases a basic, real‑world use of Koya's compositor and UI APIs together with the Hyprland plugin. The bar pops up near the bottom‑left when workspaces change, animates, and auto‑hides.
 
-Left hand status bar features a clock, with popout calendar and network status icons.
+Left hand status bar features a clock, with popout calendar, battery indicator, and network status icons.
+
+This is intended to be a jump off point for others to build feature rich and visualy pleasing status bars. It'll be a best-effort implementation using Koya's primatives and allow something to work out-of-the-box when evaluating Koya as a UI/Shell tool.
 
 This project is WIP.
 

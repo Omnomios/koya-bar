@@ -37,12 +37,14 @@ export default function main()
 		monitor: '', // Defaults to primary
 		thickness: 48,
 		font: FONT_B,
+		fontLight: FONT,
 		iconFont: ICON_FONT,
 		background:     '#00000033',
 		colour:         '#dddddd',
 		disabledColour: '#444444',
 		alertColour:    '#ff5511',
 		clock: {
+			order: 100,
 			// dayjs format string
 			shortTime: 'HH:mm',
 			longTime:  'HH:mm:ss',
@@ -60,7 +62,11 @@ export default function main()
 			}
 		},
 		network: {
+			order: 0,
 			showUnavailable: ['wifi']
+		},
+		battery: {
+			order: 1
 		}
 	});
 }

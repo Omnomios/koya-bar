@@ -18,7 +18,10 @@ export class Network
                 alignItems: 'center',
                 gap: 1
             },
-            item: { size:{w: this.config.thickness, h: 20} },
+            item: { 
+                size: { h: 20 },
+                order: this.config.network.order
+            },
         });
     }
 
