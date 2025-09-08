@@ -11,14 +11,14 @@ export class Battery
 
         this.element = UI.createElement(this.win, {
             layout: {
-                type:'row',
+                type: 'row',
                 wrap: false,
                 justifyContent: 'center',
                 alignItems: 'center',
                 gap: 5
             },
             item: {
-                size: { y: 12 },
+                size: {x: 'auto', y: 12 },
                 order: this.config.battery.order
             },
             child: [

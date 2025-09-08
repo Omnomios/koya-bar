@@ -31,7 +31,7 @@ export class Power
                 gap: 5
             },
             item: {
-                size: { h: 12 },
+                size: { y: 12 },
                 order: this.config?.power?.order
             },
             child: [
