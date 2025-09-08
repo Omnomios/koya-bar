@@ -18,7 +18,7 @@ export class Network
                 alignItems: 'center',
                 gap: 1
             },
-            item: { 
+            item: {
                 size: { h: 20 },
                 order: this.config.network.order
             },
@@ -81,7 +81,7 @@ export class Network
                             string: '?',
                             size: 12,
                         },
-                        item:{size:{w:18, h:18}},
+                        item:{size:{x:18, y:18}},
                         contentAlign: { x: 'center', y: 'center' },
                         child:[
                             {

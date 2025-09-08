@@ -56,7 +56,7 @@ export class Bar
                         alignItems: 'center',
                     },
                     item: {
-                        size: { w: 'auto', h: 200 }
+                        size: { x: 'auto', y: 200 }
                     },
                     child: [
                         {
@@ -72,7 +72,7 @@ export class Bar
                                 ],
                             },
                             item: {
-                                size: { w:48, h:48 }
+                                size: { x:48, y:48 }
                             },
                             contentAlign: { x: 'center', y: 'center' },
                         },
@@ -149,18 +149,18 @@ export class Bar
                 noise: {
                     type: 'simplex',
                     seed: 7,
-                    timeScale: { x: 2, y: 2 },
-                    position: { x: 0.01, y: 0.01 },
-                    scale:    { x: 0.06, y: 0.03 },
+                    timeScale: { x: 2,    y: 2 },
+                    position:  { x: 0.01, y: 0.01 },
+                    scale:     { x: 0.06, y: 0.03 },
                 }  },
-            { time: 5,  scale:{x:1.2, y:1.2},   looping: true	  }
+            { time: 5, scale: {x: 1.2, y: 1.2}, looping: true }
         ]);
         UI.startAnimation(this.win, archBlur, archAnim);
 
         const titleBounce = UI.addAnimation(this.win, titleText, [
             { time: 0.0,  position:{x:0, y:0}, scale:{x:0.95, y:1}, ease: 'outQuad' },
-            { time: 0.08, position:{x:0, y:3}, scale:{x:1.05, y:1}, ease: 'outQuad'  },
-            { time: 1,    position:{x:0, y:0}, scale:{x:1, y:1}	  }
+            { time: 0.08, position:{x:0, y:3}, scale:{x:1.05, y:1}, ease: 'outQuad' },
+            { time: 1,    position:{x:0, y:0}, scale:{x:1, y:1} }
         ]);
 
         Hypr.on('activewindow',({payload})=>{
@@ -170,7 +170,7 @@ export class Bar
         });
 
         // Right (fixed)
-        const right = UI.createElement(this.win, { layout: { type: 'row', wrap: false, alignItems: 'center' }, item: { preferredSize: { w: 80 } } });
+        const right = UI.createElement(this.win, { layout: { type: 'row', wrap: false, alignItems: 'center' }, item: { preferredSize: { x: 80 } } });
         UI.attach(this.win, root, right);
     }
 }
