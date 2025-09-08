@@ -33,7 +33,7 @@ class WorkspaceCell
                 vAlign: 'center'
             },
             item: {
-                size: { w: this.size.x, h: this.size.y }
+                size: { x: this.size.x, y: this.size.y }
             },
             contentAlign: { x: 'center', y: 'center' },
             contentPositioning: 'contain'
@@ -172,7 +172,7 @@ class DisplayWindow
             namespace: 'koya',
             role: 'overlay',
             anchor: 'bottom-left',
-            size: {w: 250, h: 32},
+            size: {x: 250, y: 32},
             display: this.monitor,
             keyboardInteractivity: 'none',
             acceptPointerEvents: false,

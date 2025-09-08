@@ -22,7 +22,7 @@ class Calandar
             namespace: 'koya-blur',
             role: 'overlay',
             anchor: 'bottom-left',
-            size: {w: 250, h: 270+(this.config.clock.calendar.showISOWeek?60:0)},
+            size: {x: 250, y: 270+(this.config.clock.calendar.showISOWeek?60:0)},
             offset:{ y: 2 },
             display: this.config.monitor,
             keyboardInteractivity: 'none',
@@ -62,7 +62,7 @@ class Calandar
                     },
                     contentAlign: { x: 'start', y: 'center' },
                     item:{
-                        size:{h:48, w: "auto"}
+                        size:{x:"auto", y:48}
                     }
                 },
                 {
@@ -77,7 +77,7 @@ class Calandar
                         letterSpacing: 3,
                     },
                     item:{
-                        size:{h:20, w: "auto"}
+                        size:{x: "auto", y:20}
                     }
                 },
                 this.calendarId
@@ -162,7 +162,7 @@ class Calandar
                 },
                 contentAlign: { x: 'centre', y: 'centre' },
                 item: {
-                    size: {w: cellSize, h: 'auto'}
+                    size: {x: cellSize, y: 'auto'}
                 },
             });
         }
@@ -173,7 +173,7 @@ class Calandar
                 gap: 2
             },
             item: {
-                size: {h:12}
+                size: {y:12}
             },
             child: dayLegend
         });
@@ -217,7 +217,7 @@ class Calandar
                         colour: cellColour,
                         aabb:{centre:{x:cellSize*0.5,y:cellSize*0.5}, size:{x:cellSize,y:cellSize*0.9}}
                     },
-                    item:{ size: {w: cellSize, h: 'auto'}},
+                    item:{ size: {x: cellSize, y: 'auto'}},
                     child:[{
                         renderable: {
                             type: 'text',
@@ -257,7 +257,7 @@ class Calandar
                     gap: 2
                 },
                 item: {
-                    size: {h:cellSize*0.9}
+                    size: {y:cellSize*0.9}
                 },
                 child: days
             });
@@ -274,7 +274,7 @@ class Calandar
                     },
                     contentAlign: { x: 'start', y: 'start' },
                     item: {
-                        size: {h:9}
+                        size: {y:9}
                     }
                 });
             }
@@ -355,7 +355,7 @@ export class DateTime
                 alignItems: 'start'
             },
             item: {
-                size: {h: 100},
+                size: {y: 100},
                 order: this.config.clock.order
             },
             onMouseEnter: (e) => {
@@ -388,7 +388,7 @@ export class DateTime
                     },
                     contentAlign: { x: 'end', y: 'end' },
                     item: {
-                        size: {w: 25, h: 90}
+                        size: {x: 25, y: 90}
                     }
                 },
                 {
@@ -405,7 +405,7 @@ export class DateTime
                     },
                     contentAlign: { x: 'end', y: 'end' },
                     item: {
-                        size: {w: 15, h: 90}
+                        size: {x: 15, y: 90}
                     }
                 }
             ]

@@ -18,7 +18,7 @@ export class Battery
                 gap: 5
             },
             item: {
-                size: { h: 12 },
+                size: { y: 12 },
                 order: this.config.battery.order
             },
             child: [
@@ -144,7 +144,7 @@ export class Battery
                 const bucket = (percent === 100) ? 100 : Math.max(10, Math.floor(percent / 10) * 10);
                 const key = `battery${bucket}`;
                 UI.setTextString(this.win, this.batteryIcon, this.iconSet[key] || this.iconSet['battery100']);
-                
+
                 // charging status overlay
                 let stateVal = props?.State;
                 if(typeof stateVal !== 'number') stateVal = parseInt(stateVal);
