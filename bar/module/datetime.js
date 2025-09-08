@@ -173,7 +173,7 @@ class Calandar
                 gap: 2
             },
             item: {
-                size: {h:12}
+                size: {y:12}
             },
             child: dayLegend
         });
@@ -257,7 +257,7 @@ class Calandar
                     gap: 2
                 },
                 item: {
-                    size: {h:cellSize*0.9}
+                    size: {y:cellSize*0.9}
                 },
                 child: days
             });
@@ -274,7 +274,7 @@ class Calandar
                     },
                     contentAlign: { x: 'start', y: 'start' },
                     item: {
-                        size: {h:9}
+                        size: {y:9}
                     }
                 });
             }
