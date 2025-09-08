@@ -355,7 +355,7 @@ export class DateTime
                 alignItems: 'start'
             },
             item: {
-                size: {h: 100},
+                size: {y: 100},
                 order: this.config.clock.order
             },
             onMouseEnter: (e) => {

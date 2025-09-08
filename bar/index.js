@@ -82,7 +82,7 @@ export class Bar
                 {
                     id: 'centre_modules',
                     item: {
-                        size:{ h: 48 }
+                        size:{ y: 48 }
                     }
                 },
                 { id: 'spacer_2', item: { flexGrow: 1 } },
@@ -95,7 +95,7 @@ export class Bar
                         gap: 8
                     },
                     item: {
-                        size:{ h: 200 }
+                        size:{ y: 200 }
                     },
                     child: [
                         this.dateTime.element,
@@ -137,7 +137,7 @@ export class Bar
             },
             contentAlign: { x: 'start', y: 'start' },
             item: {
-                size:{h: 20}
+                size:{y: 20}
             }
         });
         UI.attach(this.win, middle, titleText);

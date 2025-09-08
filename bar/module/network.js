@@ -19,7 +19,7 @@ export class Network
                 gap: 1
             },
             item: {
-                size: { h: 20 },
+                size: { y: 20 },
                 order: this.config.network.order
             },
         });
