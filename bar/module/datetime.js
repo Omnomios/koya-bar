@@ -19,6 +19,7 @@ class Calandar
         this.hideCallback = ()=>{};
 
         this.win = Compositor.createWindow({
+            key: 'calendar',
             namespace: 'koya-blur',
             role: 'overlay',
             anchor: 'bottom-left',

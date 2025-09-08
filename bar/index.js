@@ -16,6 +16,7 @@ export class Bar
     {
         this.config = config;
         this.win = Compositor.createWindow({
+            key: 'leftBar',
             namespace: 'koya-blur',
             role: 'bar',
             edge: 'left',

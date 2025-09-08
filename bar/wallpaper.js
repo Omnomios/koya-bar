@@ -26,6 +26,7 @@ export class Wallpaper
             this.backgrounds[display.display] = {};
 
             const win = Compositor.createWindow({
+                key: `background:${display.display}`,
                 role: 'background',
                 namespace: 'koya-background',
                 display: display.display,
