@@ -27,9 +27,9 @@ export default function main()
 
 	globalThis.workspaces = new HyprWorkspaces({
 		font: FONT,
-		background: '#424153ff',
+		background: '#000000aa',
 		colour: '#dddddd',
-		highlight: ['#dcbdfaff', '#66339933'],
+		highlight: ['#663399ff', '#66339933'],
 		urgent:    ['#fa5f5fff', '#00000000']
 	});
 
