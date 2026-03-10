@@ -9,8 +9,19 @@ export class Network
     {
         this.win = win;
         this.config = config;
+        this.element = -1;
+    }
 
-        this.element = UI.createElement(this.win, {
+    static async create (win, config)
+    {
+        const network = new Network(win, config);
+        await network.setup();
+        return network;
+    }
+
+    async setup ()
+    {
+        this.element = await UI.createElement(this.win, {
             layout: {
                 type:'row',
                 wrap: true,
@@ -37,9 +48,9 @@ export class Network
 
             if(event.interface == 'org.freedesktop.NetworkManager.Device')
             {
-                const connection = this.connections.find(i=>i.status.devPath == event.path)
+                const connection = this.connections.find(i=>i.status.devPath == event.path);
                 if(!connection) return;
-                connection.update();
+                connection.update().catch((e)=>{ Log.error(e); });
                 return;
             }
 
@@ -73,7 +84,7 @@ export class Network
                     parent: this.element,
                     showUnavailable: this.config.network.showUnavailable.includes(connection.type),
                     crossIcon: -1,
-                    element: UI.createElement(this.win, {
+                    element: await UI.createElement(this.win, {
                         renderable: {
                             type: 'text',
                             colour: this.config.colour,
@@ -93,7 +104,8 @@ export class Network
                                     string: '\uf00d',
                                     size: 8,
                                     position: {x:11, y:11}
-                                }
+                                },
+                                item: { size: { x: 18, y: 18 } }
                             }
                         ]
                     }),
@@ -101,17 +113,17 @@ export class Network
                     {
                         try
                         {
-                            if(this.crossIcon == -1) this.crossIcon = UI.getElementById(this.win, `${this.status.device}:cross`);
+                            if(this.crossIcon == -1) this.crossIcon = await UI.getElementById(this.win, `${this.status.device}:cross`);
                             this.status = await NetworkManager.getDeviceInfoIPDetail(this.status.device);
 
-                            UI.detach(this.win, this.parent, this.element);
+                            await UI.detach(this.win, this.parent, this.element);
 
                             if(this.status.state == 'unavailable' && !this.showUnavailable) return;
 
-                            UI.setEnabled(this.win, this.crossIcon, this.status.state == 'unavailable');
-                            UI.setTextString(this.win, this.element, connectionIcon[this.status.type]);
-                            UI.setTextColour(this.win, this.element, stateColour[this.status.state]);
-                            UI.attach(this.win, this.parent, this.element);
+                            await UI.setEnabled(this.win, this.crossIcon, this.status.state == 'unavailable');
+                            await UI.setTextString(this.win, this.element, connectionIcon[this.status.type]);
+                            await UI.setTextColour(this.win, this.element, stateColour[this.status.state]);
+                            await UI.attach(this.win, this.parent, this.element);
                         }
                         catch (e)
                         {
@@ -121,9 +133,10 @@ export class Network
                 });
 			}
 
-            this.connections.forEach((i) => {
-                i.update();
-            });
+            for(const i of this.connections)
+            {
+                await i.update();
+            }
 		}
 		catch (e)
 		{

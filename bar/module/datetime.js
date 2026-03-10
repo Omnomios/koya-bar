@@ -1,4 +1,3 @@
-import * as Log        from 'Koya/Log';
 import * as Compositor from 'Koya/Compositor';
 import * as UI         from 'Koya/UserInterface';
 
@@ -10,331 +9,282 @@ dayjs.extend(advancedFormat);
 dayjs.extend(isoWeek);
 dayjs.extend(weekOfYear);
 
-class Calandar
+class CalendarPopover
 {
-    constructor (win, config)
+    constructor (config)
     {
         this.config = config;
         this.visible = false;
-        this.hideCallback = ()=>{};
+        this.hideCallback = () => {};
+        this.builtForDay = -1;
+    }
 
-        this.win = Compositor.createWindow({
+    static async create (config)
+    {
+        const popover = new CalendarPopover(config);
+        await popover.setup();
+        return popover;
+    }
+
+    async setup ()
+    {
+        const cal = this.config.clock.calendar;
+        this.win = await Compositor.createWindow({
             key: 'calendar',
             namespace: 'koya-blur',
             role: 'overlay',
             anchor: 'bottom-left',
-            size: {x: 250, y: 270+(this.config.clock.calendar.showISOWeek?60:0)},
-            offset:{ y: 2 },
+            size: { x: 220, y: cal.showISOWeek ? 300 : 280 },
+            offset: { y: 2 },
             display: this.config.monitor,
             keyboardInteractivity: 'none',
             acceptPointerEvents: true,
             msaaSamples: 4
         });
 
-        this.calendarId = this.buildCalendar();
+        this.gridElement = await this.buildGrid();
 
-        this.root = UI.createElement(this.win, {
+        this.root = await UI.createElement(this.win, {
             renderable: {
                 type: 'box',
                 colour: this.config.background,
-                cornerRadius: {tr: 10,br: 10},
-                cornerResolution: {tr: 8,br: 8},
+                cornerRadius: { tr: 10, br: 10 },
+                cornerResolution: { tr: 8, br: 8 },
             },
             contentAlign: 'fill',
-            layout:{
+            layout: {
                 type: 'column',
-                gap:10,
-                padding:{l:32, r: 32, t: 16}
+                gap: 8,
+                padding: { l: 16, r: 16, t: 16, b: 12 }
             },
-            onMouseExit: ()=>{
-                this.hide();
+            onMouseExit: () => {
+                this.hide().catch(() => {});
             },
-            child:[
+            child: [
                 {
-                    id: 'fullTimeText',
+                    id: 'calTimeText',
                     renderable: {
                         type: 'text',
                         string: dayjs().format(this.config.clock.longTime),
-                        size: 40,
+                        size: 36,
                         font: this.config.font,
                         vAlign: 'start',
                         colour: this.config.colour,
                         letterSpacing: 2
                     },
-                    contentAlign: { x: 'start', y: 'center' },
-                    item:{
-                        size:{x:"auto", y:48}
-                    }
+                    item: { size: { x: 'auto', y: 44 } }
                 },
                 {
-                    id: 'fullDateText',
+                    id: 'calDateText',
                     renderable: {
                         type: 'text',
                         string: dayjs().format(this.config.clock.longDate),
-                        size: 13,
-                        font: this.config.font,
+                        size: 12,
+                        font: this.config.fontLight || this.config.font,
                         vAlign: 'start',
                         colour: this.config.colour,
-                        letterSpacing: 3,
+                        letterSpacing: 2
                     },
-                    item:{
-                        size:{x: "auto", y:20}
-                    }
+                    item: { size: { x: 'auto', y: 16 } }
                 },
-                this.calendarId
+                this.gridElement
             ]
         });
-        UI.attachRoot(this.win, this.root);
 
-        this.timeText = UI.getElementById(this.win, 'fullTimeText');
-        this.dateText = UI.getElementById(this.win, 'fullDateText');
+        await UI.attachRoot(this.win, this.root);
 
-        this.rootAnim = {
-            show: UI.addAnimation(this.win, this.root , [
-                { time: 0.0,  position:{x:-250, y:0}, opacity: 0, ease: 'outQuad' },
-                { time: 0.2,  position:{x:0,    y:0}, opacity: 1 }
-            ]),
-            hide: UI.addAnimation(this.win, this.root , [
-                { time: 0.0,  position:{x:0,    y:0}, opacity: 1, ease: 'outQuad' },
-                { time: 0.1,  position:{x:-250, y:0}, opacity: 0 }
-            ]),
-            hidden: UI.addAnimation(this.win, this.root , [
-                { time: 0.0,  position:{x:-250, y:0} },
-            ]),
-        };
+        this.timeText = await UI.getElementById(this.win, 'calTimeText');
+        this.dateText = await UI.getElementById(this.win, 'calDateText');
 
-        // When closed, stop rendering
-        UI.onAnimationEnd(this.win, this.root, this.rootAnim.hide, ()=>{
+        const slideX = -220;
+        this.showAnim = await UI.addAnimation(this.win, this.root, [
+            { time: 0.0, position: { x: slideX, y: 0 }, opacity: 0, ease: 'outQuad' },
+            { time: 0.2, position: { x: 0, y: 0 }, opacity: 1 }
+        ]);
+        this.hideAnim = await UI.addAnimation(this.win, this.root, [
+            { time: 0.0, position: { x: 0, y: 0 }, opacity: 1, ease: 'outQuad' },
+            { time: 0.12, position: { x: slideX, y: 0 }, opacity: 0 }
+        ]);
+        this.hiddenAnim = await UI.addAnimation(this.win, this.root, [
+            { time: 0.0, position: { x: slideX, y: 0 } }
+        ]);
+
+        await UI.onAnimationEnd(this.win, this.root, this.hideAnim, () => {
             setTimeout(() => {
-                Compositor.setWindowRenderingEnabled(this.win, false);
+                Compositor.setWindowRenderingEnabled(this.win, false).catch(() => {});
             }, 100);
         });
 
-        // Start hidden
-        UI.startAnimation(this.win, this.root, this.rootAnim.hidden);
-
-        for(const {element, hidden} of this.cellAnimation)
-        {
-            UI.startAnimation(this.win, element, hidden);
-        }
-
-        Compositor.setWindowRenderingEnabled(this.win, false);
+        await UI.startAnimation(this.win, this.root, this.hiddenAnim);
+        await Compositor.setWindowRenderingEnabled(this.win, false);
     }
 
-    /* Make sure current calendar is valid */
-    checkCalendar ()
+    async buildGrid ()
     {
-        const currentDay = dayjs().date();
-        if(this.calandarFor == currentDay) return;
-        UI.detach(this.win, this.root, this.calendarId);
-        UI.destroyElement(this.win, this.calandarId);
-        this.calandarId = this.buildCalendar();
-        UI.attach(this.win, this.root, this.calandarId);
-    }
+        const now = dayjs();
+        const firstDay = now.startOf('month');
+        const startDayOfWeek = firstDay.day();
+        const daysInMonth = now.daysInMonth();
+        const today = now.date();
+        this.builtForDay = today;
 
-    buildCalendar ()
-    {
-        // First day of month
-        const firstDay = dayjs().startOf("month");
-        // ISO week number (Monday start)
-        const isoWeekNumber = firstDay.isoWeek();
-        const firstDayNumber = firstDay.day();
-        const daysInMonth = dayjs().daysInMonth();
-        const currentDay = dayjs().date();
-
-        this.calandarFor = currentDay;
-
-        // Build the calendar
         const cellSize = 24;
-        const calendarRows = [];
-        const dayLetter = ['S','M','T','W','T','F','S'];
+        const cal = this.config.clock.calendar;
+        const dayLetters = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+        const children = [];
 
-        // Top Row
-        const dayLegend = [];
-        for(let d=0; d < 7; d++)
+        for (const letter of dayLetters)
         {
-            dayLegend.push({
+            children.push({
                 renderable: {
                     type: 'text',
-                    colour: "#fff",
-                    string: dayLetter[d],
+                    colour: '#fff',
+                    string: letter,
                     font: this.config.font,
                     size: 8
                 },
-                contentAlign: { x: 'centre', y: 'centre' },
-                item: {
-                    size: {x: cellSize, y: 'auto'}
-                },
+                contentAlign: { x: 'center', y: 'center' },
+                item: { size: { x: cellSize, y: 14 } }
             });
         }
 
-        calendarRows.push({
-            layout:{
-                type: 'row',
-                gap: 2
-            },
-            item: {
-                size: {y:12}
-            },
-            child: dayLegend
-        });
+        const totalSlots = startDayOfWeek + daysInMonth;
+        const weekRows = Math.ceil(totalSlots / 7);
 
-        let dayCount = -1;
-
-        // Week Rows
-        let w = 0;
-        let t = 0;
-        this.cellAnimation = [];
-        while(dayCount <= daysInMonth)
+        for (let row = 0; row < weekRows; row++)
         {
-            const days = [];
-            for(let d=0; d<7; d++)
+            for (let col = 0; col < 7; col++)
             {
-                t += 0.02;
+                const slotIndex = row * 7 + col;
+                const dayNum = slotIndex - startDayOfWeek + 1;
+                const isValid = dayNum >= 1 && dayNum <= daysInMonth;
+                const isToday = isValid && dayNum === today;
 
-                if(dayCount == -1 && d == firstDayNumber) dayCount = 0;
-                if(dayCount >-1 ) dayCount++;
+                const cellColour = isToday ? cal.todayCell
+                    : isValid ? cal.normalCell
+                    : cal.emptyCell;
+                const textColour = isToday ? cal.todayDay : cal.normalDay;
 
-                let cellColour = this.config.clock.calendar.emptyCell;
-                let textColour = this.config.clock.calendar.normalDay;
-                if(dayCount > -1)
-                {
-                    cellColour = this.config.clock.calendar.normalCell;
-                }
-                if(currentDay == dayCount)
-                {
-                    cellColour = this.config.clock.calendar.todayCell;
-                    textColour = this.config.clock.calendar.todayDay;
-                }
-
-                if(dayCount > daysInMonth)
-                {
-                    cellColour = this.config.clock.calendar.emptyCell;
-                }
-
-                const cellId = UI.createElement(this.win, {
+                children.push({
                     renderable: {
                         type: 'box',
                         colour: cellColour,
-                        aabb:{centre:{x:cellSize*0.5,y:cellSize*0.5}, size:{x:cellSize,y:cellSize*0.9}}
+                        aabb: {
+                            centre: { x: cellSize * 0.5, y: cellSize * 0.5 },
+                            size: { x: cellSize, y: cellSize * 0.9 }
+                        }
                     },
-                    item:{ size: {x: cellSize, y: 'auto'}},
-                    child:[{
+                    item: { size: { x: cellSize, y: cellSize } },
+                    child: [{
                         renderable: {
                             type: 'text',
                             colour: textColour,
-                            string: dayCount==-1||dayCount>daysInMonth?'':dayCount,
+                            string: isValid ? String(dayNum) : '',
                             font: this.config.font,
                             size: 10
                         },
-                        contentAlign: { x: 'centre', y: 'centre' },
+                        contentAlign: { x: 'center', y: 'center' },
+                        item: { size: { x: 'auto', y: 'auto' } }
                     }]
                 });
-
-                this.cellAnimation.push(
-                    {
-                        element: cellId,
-                        show: UI.addAnimation(this.win, cellId , [
-                            { time: 0.0,  position:{x:-250, y:0}, rotation: 45, ease: 'outQuad' },
-                            { time: t+0.0,  position:{x:-250, y:0}, rotation: 45, ease: 'outQuad' },
-                            { time: t+0.2,  position:{x:0,    y:0}, rotation: 0 }
-                        ]),
-                        hide: UI.addAnimation(this.win, cellId , [
-                            { time: t+0.0,  position:{x:0,    y:0}, rotation: 0, ease: 'outQuad' },
-                            { time: t+0.2,  position:{x:-250, y:0}, rotation: 45 }
-                        ]),
-                        hidden: UI.addAnimation(this.win, cellId , [
-                            { time: 0.0,  position:{x:-250, y:0}, rotation: 45},
-                        ]),
-                    }
-                );
-
-                days.push(cellId);
             }
-
-            calendarRows.push({
-                layout:{
-                    type: 'row',
-                    gap: 2
-                },
-                item: {
-                    size: {y:cellSize*0.9}
-                },
-                child: days
-            });
-
-            if(this.config.clock.calendar.showISOWeek)
-            {
-                calendarRows.push({
-                    renderable: {
-                        type: 'text',
-                        colour: this.config.clock.calendar.weekText,
-                        string: `Wk ${isoWeekNumber+w}`,
-                        font: this.config.font,
-                        size: 8,
-                    },
-                    contentAlign: { x: 'start', y: 'start' },
-                    item: {
-                        size: {y:9}
-                    }
-                });
-            }
-
-            w++;
         }
 
-        return UI.createElement(this.win, {
-            id: 'calendar',
+        const gridWidth = 7 * cellSize + 6 * 2;
+        const gridHeight = 14 + weekRows * cellSize + weekRows * 2;
+
+        const gridElement = await UI.createElement(this.win, {
+            id: 'calGrid',
             layout: {
-                type:'column',
-                gap: 2
+                type: 'grid',
+                gridColumns: 7,
+                columnGap: 2,
+                rowGap: 2
             },
-            item: {
-                flexGrow: 1,
-                order: 100
-            },
-            child: calendarRows
+            item: { size: { x: gridWidth, y: gridHeight } },
+            child: children
         });
+
+        if (cal.showISOWeek)
+        {
+            const weekLabels = [];
+            for (let row = 0; row < weekRows; row++)
+            {
+                const firstDayInRow = row * 7 - startDayOfWeek + 1;
+                const representativeDay = Math.max(1, Math.min(daysInMonth, firstDayInRow));
+                const weekNum = firstDay.date(representativeDay).isoWeek();
+                weekLabels.push(String(weekNum));
+            }
+
+            return await UI.createElement(this.win, {
+                layout: { type: 'column', gap: 6 },
+                item: { flexGrow: 1, size: { x: gridWidth, y: gridHeight + 6 + 10 } },
+                child: [
+                    gridElement,
+                    {
+                        renderable: {
+                            type: 'text',
+                            colour: cal.weekText,
+                            string: `Wk ${weekLabels.join(' \u00b7 ')}`,
+                            font: this.config.font,
+                            size: 8,
+                            letterSpacing: 1
+                        },
+                        item: { size: { x: gridWidth, y: 10 } }
+                    }
+                ]
+            });
+        }
+
+        return gridElement;
+    }
+
+    async checkCalendar ()
+    {
+        const today = dayjs().date();
+        if (this.builtForDay === today) return;
+
+        await UI.detach(this.win, this.root, this.gridElement);
+        await UI.destroyElement(this.win, this.gridElement);
+        this.gridElement = await this.buildGrid();
+        await UI.attach(this.win, this.root, this.gridElement);
     }
 
     startClock ()
     {
-        const updateText = ()=>{
-            UI.setTextString(this.win, this.timeText, dayjs().format(this.config.clock.longTime));
-            UI.setTextString(this.win, this.dateText, dayjs().format(this.config.clock.longDate));
-        }
-        updateText();
-        this.clock = setInterval(updateText, 1000);
+        const update = async () => {
+            await UI.setTextString(this.win, this.timeText, dayjs().format(this.config.clock.longTime));
+            await UI.setTextString(this.win, this.dateText, dayjs().format(this.config.clock.longDate));
+        };
+        update().catch(() => {});
+        this.clockInterval = setInterval(() => update().catch(() => {}), 1000);
     }
 
     stopClock ()
     {
-        clearInterval(this.clock);
+        clearInterval(this.clockInterval);
     }
 
-    preWarm ()
+    async preWarm ()
     {
-        Compositor.setWindowRenderingEnabled(this.win, true);
-        this.checkCalendar();
+        await Compositor.setWindowRenderingEnabled(this.win, true);
+        await this.checkCalendar();
     }
 
-    show (cb=()=>{})
+    async show (onHide = () => {})
     {
-        Compositor.setPointerEvents(this.win, true);
-        this.hideCallback = cb;
+        await Compositor.setPointerEvents(this.win, true);
+        this.hideCallback = onHide;
         this.visible = true;
-        UI.startAnimation(this.win, this.root, this.rootAnim.show);
+        await UI.startAnimation(this.win, this.root, this.showAnim);
         this.startClock();
-        this.cellAnimation.forEach(({element, show}) => {
-            UI.startAnimation(this.win, element, show);
-        });
     }
 
-    hide ()
+    async hide ()
     {
-        Compositor.setPointerEvents(this.win, false);
+        await Compositor.setPointerEvents(this.win, false);
         this.visible = false;
-        UI.startAnimation(this.win, this.root, this.rootAnim.hide);
+        await UI.startAnimation(this.win, this.root, this.hideAnim);
         this.hideCallback();
         this.stopClock();
     }
@@ -346,35 +296,65 @@ export class DateTime
     {
         this.win = win;
         this.config = config;
+    }
 
-        this.calandar = new Calandar(this.win, this.config);
+    static async create (win, config)
+    {
+        const dateTime = new DateTime(win, config);
+        await dateTime.setup();
+        return dateTime;
+    }
 
-        this.element = UI.createElement(this.win, {
-            layout:{
+    async setup ()
+    {
+        this.calendar = null;
+        this.calendarReady = null;
+        this.pendingHideAction = null;
+
+        this.element = await UI.createElement(this.win, {
+            layout: {
                 type: 'row',
                 justifyContent: 'center',
                 alignItems: 'start'
             },
             item: {
-                size: {y: 100},
+                size: { y: 100 },
                 order: this.config.clock.order
             },
-            onMouseEnter: (e) => {
-                if(!this.calandar.visible) UI.startAnimation(this.win, this.element, this.anim.focus);
+            onMouseEnter: () => {
+                Compositor.setCursor(this.win, 'pointer').catch(() => {});
+                if (!this.calendar || !this.calendar.visible)
+                {
+                    UI.startAnimation(this.win, this.element, this.anim.focus).catch(() => {});
+                }
             },
-            onMouseExit: (e) => {
-                if(!this.calandar.visible) UI.startAnimation(this.win, this.element, this.anim.blur);
+            onMouseExit: () => {
+                Compositor.setCursor(this.win, 'default').catch(() => {});
+                if (!this.calendar || !this.calendar.visible)
+                {
+                    UI.startAnimation(this.win, this.element, this.anim.blur).catch(() => {});
+                }
             },
-            onMouseClick: (e) => {
-                UI.startAnimation(this.win, this.element, this.anim.hide);
-                this.calandar.preWarm();
-                UI.onAnimationEnd(this.win, this.element, this.anim.hide, ()=>{
-                    this.calandar.show(()=>{
-                        UI.startAnimation(this.win, this.element, this.anim.show);
-                    });
-                });
+            onMouseClick: async () => {
+                if (!this.calendar)
+                {
+                    if (!this.calendarReady)
+                    {
+                        this.calendarReady = CalendarPopover.create(this.config)
+                            .then(cal => { this.calendar = cal; return cal; });
+                    }
+                    this.calendar = await this.calendarReady;
+                }
+                Compositor.setCursor(this.win, 'default').catch(() => {});
+                await this.calendar.preWarm();
+                this.pendingHideAction = () => {
+                    this.calendar.show(() => {
+                        UI.startAnimation(this.win, this.element, this.anim.show).catch(() => {});
+                    }).catch(() => {});
+                };
+                await UI.startAnimation(this.win, this.element, this.anim.hide);
             },
-            child:[
+            child: [
                 {
                     id: 'timeText',
                     renderable: {
@@ -389,7 +369,7 @@ export class DateTime
                     },
                     contentAlign: { x: 'end', y: 'end' },
                     item: {
-                        size: {x: 25, y: 90}
+                        size: { x: 25, y: 90 }
                     }
                 },
                 {
@@ -406,42 +386,51 @@ export class DateTime
                     },
                     contentAlign: { x: 'end', y: 'end' },
                     item: {
-                        size: {x: 15, y: 90}
+                        size: { x: 15, y: 90 }
                     }
                 }
             ]
         });
 
         this.anim = {
-            focus: UI.addAnimation(this.win, this.element , [
-                { time: 0.0,  position:{x:0, y:0}, scale:{x:1, y:1}, ease: 'inQuad' },
-                { time: 0.2,  position:{x:2, y:0}, scale:{x:1, y:1},  }
+            focus: await UI.addAnimation(this.win, this.element, [
+                { time: 0.0, position: { x: 0, y: 0 }, scale: { x: 1, y: 1 }, ease: 'inQuad' },
+                { time: 0.2, position: { x: 2, y: 0 }, scale: { x: 1, y: 1 } }
             ]),
-            blur: UI.addAnimation(this.win, this.element , [
-                { time: 0.0,  position:{x:2, y:0}, scale:{x:1, y:1}, ease: 'outQuad' },
-                { time: 0.05,  position:{x:0, y:0}, scale:{x:1, y:1}, }
+            blur: await UI.addAnimation(this.win, this.element, [
+                { time: 0.0, position: { x: 2, y: 0 }, scale: { x: 1, y: 1 }, ease: 'outQuad' },
+                { time: 0.05, position: { x: 0, y: 0 }, scale: { x: 1, y: 1 } }
             ]),
-            hide: UI.addAnimation(this.win, this.element , [
-                { time: 0.0,  position:{x:2,  y:0}, colour:[1,1,1,1],  ease: 'outQuad' },
-                { time: 0.1,  position:{x:-4,  y:0}, colour:[1,1,1,1], ease: 'inQuad' },
-                { time: 0.2, position:{x:40, y:0}, colour:[1,1,1,0], }
+            hide: await UI.addAnimation(this.win, this.element, [
+                { time: 0.0, position: { x: 2, y: 0 }, opacity: 1, ease: 'outQuad' },
+                { time: 0.1, position: { x: -4, y: 0 }, opacity: 1, ease: 'inQuad' },
+                { time: 0.2, position: { x: 40, y: 0 }, opacity: 0 }
             ]),
-            show: UI.addAnimation(this.win, this.element , [
-                { time: 0.0,  position:{x:40,  y:0}, ease: 'outQuad' },
-                { time: 0.1,  position:{x:-4,  y:0}, ease: 'inQuad' },
-                { time: 0.2, position:{x:0, y:0}, }
+            show: await UI.addAnimation(this.win, this.element, [
+                { time: 0.0, position: { x: 40, y: 0 }, opacity: 0, ease: 'outQuad' },
+                { time: 0.1, position: { x: -4, y: 0 }, opacity: 0.8, ease: 'inQuad' },
+                { time: 0.2, position: { x: 0, y: 0 }, opacity: 1 }
             ])
         };
+
+        await UI.onAnimationEnd(this.win, this.element, this.anim.hide, () => {
+            if (this.pendingHideAction)
+            {
+                const action = this.pendingHideAction;
+                this.pendingHideAction = null;
+                action();
+            }
+        });
     }
 
-    init ()
+    async init ()
     {
-        this.timeText = UI.getElementById(this.win, 'timeText');
-        this.dateText = UI.getElementById(this.win, 'dateText');
+        this.timeText = await UI.getElementById(this.win, 'timeText');
+        this.dateText = await UI.getElementById(this.win, 'dateText');
 
         setInterval(async () => {
-            UI.setTextString(this.win, this.timeText, dayjs().format(this.config.clock.shortTime));
-            UI.setTextString(this.win, this.dateText, dayjs().format(this.config.clock.shortDate));
+            await UI.setTextString(this.win, this.timeText, dayjs().format(this.config.clock.shortTime));
+            await UI.setTextString(this.win, this.dateText, dayjs().format(this.config.clock.shortDate));
         }, 1000);
     }
 }

@@ -15,15 +15,15 @@ class WorkspaceCell
         this.isFocussed = false;
     }
 
-    createUI ()
+    async createUI ()
     {
         // If it already exists, nuke it.
         if(this.boxElement)
         {
-            this.destroy();
+            await this.destroy();
         }
 
-        const textId = UI.createElement(this.window.win, {
+        const textId = await UI.createElement(this.window.win, {
             renderable: {
                 type: 'text',
                 string: `${this.workspace.name}`,
@@ -39,7 +39,7 @@ class WorkspaceCell
             contentPositioning: 'contain'
         });
 
-        this.boxElement = UI.createElement(this.window.win, {
+        this.boxElement = await UI.createElement(this.window.win, {
             renderable: {
                 type: 'box',
                 aabb: { min: { x: 0, y: 0 }, max: {x: this.size.x, y: this.size.y} },
@@ -52,19 +52,20 @@ class WorkspaceCell
                 order: parseInt(this.workspace.id)
             }
         });
-        UI.attach(this.window.win, this.boxElement, textId);
+        await UI.attach(this.window.win, this.boxElement, textId);
 
-        this.topLine = UI.createElement(this.window.win, {
+        this.topLine = await UI.createElement(this.window.win, {
             renderable: {
                 type: 'box',
                 aabb: { min: { x: 0, y: 0 }, max: { x: this.size.x, y: 4 } },
                 cornerRadius: [2,2,0,0],
                 cornerResolution: 2,
                 colour: this.config.highlight[0]
-            }
+            },
+            item: { size: { x: this.size.x, y: 4 } }
         });
-        UI.attach(this.window.win, this.boxElement, this.topLine);
-        UI.attach(this.window.win, this.window.root, this.boxElement);
+        await UI.attach(this.window.win, this.boxElement, this.topLine);
+        await UI.attach(this.window.win, this.window.root, this.boxElement);
 
         const H        = this.size.y;    // usually this.size.y
         const A1       = H * 0.52;       // first hop height
@@ -82,7 +83,7 @@ class WorkspaceCell
         };
 
         this.boxAnim = {
-            urgent: UI.addAnimation(this.window.win, this.boxElement, [
+            urgent: await UI.addAnimation(this.window.win, this.boxElement, [
                 // Rest
                 { time: 0.00, position: { x: 0, y: 0 },        scale: { x: 1.00, y: 1.00 }, noise: baseNoise },
                 // Hop 1: up with ease-out, slight stretch
@@ -100,40 +101,40 @@ class WorkspaceCell
         }
 
         this.toplineAnim = {
-            focus: UI.addAnimation(this.window.win, this.topLine, [
+            focus: await UI.addAnimation(this.window.win, this.topLine, [
                 { time: 0.0, colour:this.config.highlight[0], ease: 'outQuad' },
                 { time: 0.2, colour:this.config.highlight[1], ease: 'inQuad' },
                 { time: 0.8, colour:this.config.highlight[0], looping: true},
             ]),
-            urgent: UI.addAnimation(this.window.win, this.topLine, [
+            urgent: await UI.addAnimation(this.window.win, this.topLine, [
                 { time: 0.0, colour:this.config.urgent[0] },
                 { time: 0.5, colour:this.config.urgent[1] },
                 { time: 1.0, colour:this.config.urgent[0], looping: true},
             ])
         }
 
-        this.focus(false);
+        await this.focus(false);
     }
 
-    focus (enabled)
+    async focus (enabled)
     {
         if(!this.boxElement) return;
 
         this.isFocussed = enabled;
-        UI.setEnabled(this.window.win, this.topLine, enabled || this.isUrgent);
+        await UI.setEnabled(this.window.win, this.topLine, enabled || this.isUrgent);
 
-        if(enabled)
+        if(enabled && this.toplineAnim)
         {
             this.isUrgent = false;
-            UI.stopAnimation(this.window.win, this.boxElement);
-            UI.startAnimation(this.window.win, this.topLine, this.toplineAnim.focus);
+            await UI.stopAnimation(this.window.win, this.boxElement);
+            await UI.startAnimation(this.window.win, this.topLine, this.toplineAnim.focus);
         }
     }
 
-    destroy ()
+    async destroy ()
     {
         if(!this.boxElement) return;
-        UI.destroyElement(this.window.win, this.boxElement);
+        await UI.destroyElement(this.window.win, this.boxElement);
     }
 
     getMonitor ()
@@ -141,15 +142,15 @@ class WorkspaceCell
         return this.workspace.monitor;
     }
 
-    setUrgent ()
+    async setUrgent ()
     {
         // If they're already on the workspace don't bother
         if(this.isFocussed) return;
 
         this.isUrgent = true;
-        UI.setEnabled(this.window.win, this.topLine, true);
-        UI.startAnimation(this.window.win, this.boxElement, this.boxAnim.urgent);
-        UI.startAnimation(this.window.win, this.topLine, this.toplineAnim.urgent);
+        await UI.setEnabled(this.window.win, this.topLine, true);
+        await UI.startAnimation(this.window.win, this.boxElement, this.boxAnim.urgent);
+        await UI.startAnimation(this.window.win, this.topLine, this.toplineAnim.urgent);
     }
 }
 
@@ -163,12 +164,12 @@ class DisplayWindow
         this.visible = true;
     }
 
-    createUI ()
+    async createUI ()
     {
         // If it already exists, tear it down
-        if(this.win) Compositor.destroyWindow(this.win);
+        if(this.win) await Compositor.destroyWindow(this.win);
 
-        this.win = Compositor.createWindow({
+        this.win = await Compositor.createWindow({
             namespace: 'koya',
             role: 'overlay',
             anchor: 'bottom-left',
@@ -179,7 +180,7 @@ class DisplayWindow
             msaaSamples: 4
         });
 
-        this.root = UI.createElement(this.win, {
+        this.root = await UI.createElement(this.win, {
             layout: {
                 type: 'row',
                 wrap: false,
@@ -189,22 +190,22 @@ class DisplayWindow
                 alignItems: 'start'
             }
         });
-        UI.attachRoot(this.win, this.root);
+        await UI.attachRoot(this.win, this.root);
 
         this.anim = {
-            show: UI.addAnimation(this.win, this.root, [
+            show: await UI.addAnimation(this.win, this.root, [
                 { time: 0.0, position: { x: 0, y: 32 }, ease: 'outQuad' },
                 { time: 0.25, position: { x: 0, y: 0 } }
             ]),
-            hide: UI.addAnimation(this.win, this.root, [
+            hide: await UI.addAnimation(this.win, this.root, [
                 { time: 0.0, position: { x: 0, y: 0 }, ease: 'outQuad' },
                 { time: 0.25, position: { x: 0, y: 32 } }
             ])
         };
 
         // Put the window to sleep when the animation is done.
-        UI.onAnimationEnd(this.win, this.root, this.anim.hide, () => {
-            Compositor.setWindowRenderingEnabled(this.win, false);
+        await UI.onAnimationEnd(this.win, this.root, this.anim.hide, () => {
+            Compositor.setWindowRenderingEnabled(this.win, false).catch(() => {});
         });
     }
 
@@ -213,12 +214,12 @@ class DisplayWindow
         return new WorkspaceCell(this, workspace, this.config);
     }
 
-    show (locked = false)
+    async show (locked = false)
     {
         if(!this.visible)
         {
-            Compositor.setWindowRenderingEnabled(this.win, true);
-            UI.startAnimation(this.win, this.root, this.anim.show);
+            await Compositor.setWindowRenderingEnabled(this.win, true);
+            await UI.startAnimation(this.win, this.root, this.anim.show);
         }
         this.visible = true;
         clearTimeout(this.hideTimer);
@@ -226,14 +227,14 @@ class DisplayWindow
         if(!locked)
         {
             this.hideTimer = setTimeout(()=>{
-                this.hide();
+                this.hide().catch(() => {});
             }, 2000);
         }
     }
 
-    hide ()
+    async hide ()
     {
-        if(this.visible) UI.startAnimation(this.win, this.root, this.anim.hide);
+        if(this.visible) await UI.startAnimation(this.win, this.root, this.anim.hide);
         this.visible = false;
         clearTimeout(this.hideTimer);
     }
@@ -246,22 +247,32 @@ export class HyprWorkspaces
         this.config = config;
         this.displayWindow = {};
         this.workspaceCell = {};
+    }
 
-        Hypr.on('createworkspace', async ({payload:workspace}) => {
+    static async create (config)
+    {
+        const workspaces = new HyprWorkspaces(config);
+        await workspaces.init();
+        return workspaces;
+    }
+
+    async init ()
+    {
+        Hypr.on('createworkspace', ({payload:workspace}) => {
             this.createWorkspace(workspace).catch((e)=>{
                 Log.error(e.message);
                 Log.debug(e.stack);
             });
         });
 
-        Hypr.on('destroyworkspace', async ({payload:workspace}) => {
+        Hypr.on('destroyworkspace', ({payload:workspace}) => {
             this.removeWorkspace(workspace).catch((e)=>{
                 Log.error(e.message);
                 Log.debug(e.stack);
             });
         });
 
-        Hypr.on('focusedmon', async ({payload}) => {
+        Hypr.on('focusedmon', ({payload}) => {
             const [monitor, workspace] = payload.split(',');
             this.switchTo(workspace).catch((e)=>{
                 Log.error(e.message);
@@ -269,7 +280,7 @@ export class HyprWorkspaces
             });
         });
 
-        Hypr.on('workspace', async ({payload:workspace}) => {
+        Hypr.on('workspace', ({payload:workspace}) => {
             this.switchTo(workspace).catch((e)=>{
                 Log.error(e.message);
                 Log.debug(e.stack);
@@ -279,37 +290,41 @@ export class HyprWorkspaces
         Hypr.on('urgent', async ({payload: clientAddress}) => {
             const clients = await Hypr.json('clients');
             const window = clients.find(i=>i.address.includes(clientAddress));
+            if(!window) return;
 
             if(!this.workspaceCell[window.workspace.id]) return;
 
             const monitor = this.workspaceCell[window.workspace.id].getMonitor();
 
             if(!this.displayWindow[monitor]) return;
-            this.displayWindow[monitor].show(true);
-            this.workspaceCell[window.workspace.id].setUrgent();
+            await this.displayWindow[monitor].show(true);
+            await this.workspaceCell[window.workspace.id].setUrgent();
         });
 
-        this.buildWorkspaces().catch((e)=>{
-            Log.error(e.message);
-            Log.debug(e.stack);
-        });
+        await this.buildWorkspaces();
     }
 
     async switchTo (workspaceName)
     {
-        for(const w of Object.values(this.workspaceCell)) w.focus(false);
+        for(const w of Object.values(this.workspaceCell))
+        {
+            await w.focus(false);
+        }
 
         if(!this.workspaceCell[workspaceName]) return;
 
-        this.workspaceCell[workspaceName].focus(true);
-        for(const w of Object.values(this.displayWindow)) w.show();
+        await this.workspaceCell[workspaceName].focus(true);
+        for(const w of Object.values(this.displayWindow))
+        {
+            await w.show();
+        }
     }
 
     async removeWorkspace (workspaceName)
     {
         if(this.workspaceCell[workspaceName])
         {
-            this.workspaceCell[workspaceName].destroy();
+            await this.workspaceCell[workspaceName].destroy();
             delete this.workspaceCell[workspaceName];
         }
     }
@@ -322,7 +337,7 @@ export class HyprWorkspaces
         if(!this.workspaceCell[workspaceName])
         {
             this.workspaceCell[workspaceName] = this.displayWindow[workspace.monitor].addCell(workspace);
-            this.workspaceCell[workspaceName].createUI();
+            await this.workspaceCell[workspaceName].createUI();
         }
         await this.switchTo(workspaceName);
     }
@@ -336,16 +351,16 @@ export class HyprWorkspaces
             if(!this.displayWindow[workspace.monitor])
             {
                 this.displayWindow[workspace.monitor] = new DisplayWindow(workspace.monitor, this.config);
-                this.displayWindow[workspace.monitor].createUI();
-                this.displayWindow[workspace.monitor].show();
+                await this.displayWindow[workspace.monitor].createUI();
+                await this.displayWindow[workspace.monitor].show();
             }
 
             if(this.workspaceCell[workspace.id])
             {
-                this.removeWorkspace(workspace.id);
+                await this.removeWorkspace(workspace.id);
             }
             this.workspaceCell[workspace.id] = this.displayWindow[workspace.monitor].addCell(workspace);
-            this.workspaceCell[workspace.id].createUI();
+            await this.workspaceCell[workspace.id].createUI();
         }
     }
 }

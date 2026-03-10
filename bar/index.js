@@ -1,56 +1,62 @@
 import * as Compositor from 'Koya/Compositor';
 import * as UI         from 'Koya/UserInterface';
-import * as Image      from 'Koya/Image';
-import * as Hypr       from 'Module/hypr';
-import * as Log        from 'Koya/Log';
 
 import { DateTime } from './module/datetime.js'
 import { Network }  from './module/network.js'
 import { Battery }  from './module/battery.js'
 import { Power }    from './module/power.js'
 
-const FONT_B = '/rom/font/Inter_18pt-Medium.ttf';
-
 export class Bar
 {
     constructor (config)
     {
         this.config = config;
-        this.win = Compositor.createWindow({
+        this.win = -1;
+    }
+
+    static async create (config)
+    {
+        const bar = new Bar(config);
+        await bar.setup();
+        return bar;
+    }
+
+    async setup ()
+    {
+        this.win = await Compositor.createWindow({
             key: 'leftBar',
             namespace: 'koya-blur',
             role: 'bar',
             edge: 'left',
-            thickness: config.thickness,
+            thickness: this.config.thickness,
             msaaSamples: 4,
             display: this.config.monitor,
             keyboardInteractivity: 'none',
             acceptPointerEvents: true
         });
 
-        this.dateTime = new DateTime(this.win, config);
-        this.network  = new Network(this.win, config);
-        this.battery  = new Battery(this.win, config);
-        this.power    = new Power(this.win, config);
+        this.dateTime = await DateTime.create(this.win, this.config);
+        this.network  = await Network.create(this.win, this.config);
+        this.battery  = await Battery.create(this.win, this.config);
+        this.power    = await Power.create(this.win, this.config);
 
-        // Root
-        const root = UI.createElement(this.win, {
+        const root = await UI.createElement(this.win, {
             id: 'root',
             renderable: {
                 type: 'box',
                 colour: this.config.background,
-                cornerRadius: {tr: 4,br: 4},
-                cornerResolution: {tr: 2,br: 2},
+                cornerRadius: { tr: 4, br: 4 },
+                cornerResolution: { tr: 2, br: 2 },
             },
             contentAlign: 'fill',
             layout: {
                 type: 'column',
                 wrap: false,
                 justifyContent: 'start',
-                alignItems: 'start',
+                alignItems: 'center',
             },
             child: [
-                { // Icon holder
+                {
                     id: 'top_modules',
                     layout: {
                         type: 'column',
@@ -59,7 +65,7 @@ export class Bar
                         alignItems: 'center',
                     },
                     item: {
-                        size: { x: 'auto', y: 200 }
+                        size: { y: 48 }
                     },
                     child: [
                         {
@@ -68,27 +74,20 @@ export class Bar
                                 texture: '/rom/image/arch.png',
                                 frames: [
                                     {
-                                        size:{x:32,y:32},
-                                        origin:{x:16,y:16},
-                                        aabb:{ min:{x:0, y:0}, max:{x:128,y:128} }
+                                        size: { x: 32, y: 32 },
+                                        origin: { x: 16, y: 16 },
+                                        aabb: { min: { x: 0, y: 0 }, max: { x: 128, y: 128 } }
                                     }
                                 ],
                             },
                             item: {
-                                size: { x:48, y:48 }
+                                size: { x: 48, y: 48 }
                             },
                             contentAlign: { x: 'center', y: 'center' },
                         },
                     ]
                 },
-                { id: 'spacer_1', item: { flexGrow: 1 } },
-                {
-                    id: 'centre_modules',
-                    item: {
-                        size:{ y: 48 }
-                    }
-                },
-                { id: 'spacer_2', item: { flexGrow: 1 } },
+                { item: { flexGrow: 1, size: { y: 0 } } },
                 {
                     id: 'bottom_modules',
                     layout: {
@@ -98,7 +97,7 @@ export class Bar
                         gap: 10
                     },
                     item: {
-                        size:{ y: 200 }
+                        size: { y: 200 }
                     },
                     child: [
                         this.dateTime.element,
@@ -109,73 +108,11 @@ export class Bar
                 },
             ]
         });
-        UI.attachRoot(this.win, root);
+        await UI.attachRoot(this.win, root);
 
-        this.dateTime.init();
-        this.network.init();
-        this.battery.init();
-        this.power.init();
-
-        const archBlur = UI.getElementById(this.win, 'archBlur');
-
-        // Middle (true centered, no grow)
-        const middle = UI.createElement(this.win, {
-            layout: {
-                type: 'row',
-                wrap: false,
-                justifyContent: 'center',
-                alignItems: 'center',
-                padding: { t: 7, r: 0, b: 0, l: 0 },
-            }
-        });
-
-        const titleText = UI.createElement(this.win, {
-            renderable: {
-                type: 'text',
-                string: '',
-                size: 14,
-                colour: '#eee',
-                font: FONT_B,
-                justify: 'center',
-                vAlign: 'start',
-                letterSpacing: 1.6
-            },
-            contentAlign: { x: 'start', y: 'start' },
-            item: {
-                size:{y: 20}
-            }
-        });
-        UI.attach(this.win, middle, titleText);
-
-        const archAnim = UI.addAnimation(this.win, archBlur, [
-            { time: 0.0,  scale:{x:1.2, y:1.2} },
-
-            { time: 2.5, scale:{x:1.5, y:1.5},
-                noise: {
-                    type: 'simplex',
-                    seed: 7,
-                    timeScale: { x: 2,    y: 2 },
-                    position:  { x: 0.01, y: 0.01 },
-                    scale:     { x: 0.06, y: 0.03 },
-                }  },
-            { time: 5, scale: {x: 1.2, y: 1.2}, looping: true }
-        ]);
-        UI.startAnimation(this.win, archBlur, archAnim);
-
-        const titleBounce = UI.addAnimation(this.win, titleText, [
-            { time: 0.0,  position:{x:0, y:0}, scale:{x:0.95, y:1}, ease: 'outQuad' },
-            { time: 0.08, position:{x:0, y:3}, scale:{x:1.05, y:1}, ease: 'outQuad' },
-            { time: 1,    position:{x:0, y:0}, scale:{x:1, y:1} }
-        ]);
-
-        Hypr.on('activewindow',({payload})=>{
-            const [windowClass, windowTitle] = payload.split(',');
-            UI.setTextString(this.win, titleText, windowTitle);
-            UI.startAnimation(this.win, titleText, titleBounce);
-        });
-
-        // Right (fixed)
-        const right = UI.createElement(this.win, { layout: { type: 'row', wrap: false, alignItems: 'center' }, item: { preferredSize: { x: 80 } } });
-        UI.attach(this.win, root, right);
+        await this.dateTime.init();
+        await this.network.init();
+        await this.battery.init();
+        await this.power.init();
     }
 }

@@ -1,3 +1,4 @@
+import * as Compositor from 'Koya/Compositor';
 import * as UI  from 'Koya/UserInterface';
 import * as Log from 'Koya/Log';
 import * as DBus from 'Module/dbus';
@@ -8,21 +9,31 @@ export class Power
     {
         this.win = win;
         this.config = config;
+        this.element = -1;
 
         this.iconSet = {
             'power-saver': '\udb80\udf2a',
             'balanced':    '\udb81\udf54',
             'performance': '\udb80\ude38'
         };
+    }
 
-        // Pre-create icon elements to obtain stable handles
+    static async create (win, config)
+    {
+        const power = new Power(win, config);
+        await power.setup();
+        return power;
+    }
+
+    async setup ()
+    {
         this.iconElements = {
-            'power-saver': this.createProfileIcon('power-saver'),
-            'balanced':    this.createProfileIcon('balanced'),
-            'performance': this.createProfileIcon('performance'),
+            'power-saver': await this.createProfileIcon('power-saver'),
+            'balanced':    await this.createProfileIcon('balanced'),
+            'performance': await this.createProfileIcon('performance'),
         };
 
-        this.element = UI.createElement(this.win, {
+        this.element = await UI.createElement(this.win, {
             layout: {
                 type:'row',
                 wrap: false,
@@ -42,10 +53,10 @@ export class Power
         });
     }
 
-    createProfileIcon (profile)
+    async createProfileIcon (profile)
     {
         const id = `pp:${profile}`;
-        return UI.createElement(this.win, {
+        return await UI.createElement(this.win, {
             id,
             renderable: {
                 type: 'text',
@@ -55,6 +66,13 @@ export class Power
                 size: 14,
             },
             contentAlign: { x: 'center', y: 'center' },
+            item: { size: { x: 14, y: 14 } },
+            onMouseEnter: () => {
+                Compositor.setCursor(this.win, 'pointer').catch(() => {});
+            },
+            onMouseExit: () => {
+                Compositor.setCursor(this.win, 'default').catch(() => {});
+            },
             onMouseClick: () => { this.activateProfile(profile); }
         });
     }
@@ -85,23 +103,23 @@ export class Power
 
             // Service available; ensure visible
             this.hasPowerProfiles = true;
-            UI.setEnabled(this.win, this.element, true);
+            await UI.setEnabled(this.win, this.element, true);
 
             // Update colours: active = this.config.colour; inactive = this.config.disabledColour
             for (const p of ['power-saver','balanced','performance'])
             {
                 let el = this.iconElements?.[p];
-                if(!el) el = UI.getElementById(this.win, `pp:${p}`);
+                if(!el) el = await UI.getElementById(this.win, `pp:${p}`);
                 if(!el) { Log.warn(`[PPD] icon not found: ${p}`); continue; }
                 const colour = (p === active) ? this.config.colour : this.config.disabledColour;
-                UI.setTextColour(this.win, el, colour);
+                await UI.setTextColour(this.win, el, colour);
             }
         }
         catch(e)
         {
             // Service not available; hide element and mark unavailable
             this.hasPowerProfiles = false;
-            UI.setEnabled(this.win, this.element, false);
+            await UI.setEnabled(this.win, this.element, false);
         }
     }
 
@@ -147,7 +165,7 @@ export class Power
                     const onPath = (sig.path === '/net/hadess/PowerProfiles');
                     if(isProps && (onPath || (sig.body === 'net.hadess.PowerProfiles')))
                     {
-                        this.refresh();
+                        this.refresh().catch(() => {});
                     }
                 } catch(_) { }
             };

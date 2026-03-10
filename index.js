@@ -1,8 +1,5 @@
-import * as Compositor from 'Koya/Compositor';
-import * as UI from 'Koya/UserInterface';
-import * as Event from 'Koya/Event';
-import * as Log from 'Koya/Log';
 import * as Hypr from 'Module/hypr';
+import * as Log from 'Koya/Log';
 
 import { HyprWorkspaces } from './hypr/workspaces.js';
 import { Bar } from './bar/index.js';
@@ -12,28 +9,18 @@ const FONT = '/rom/font/Inter_18pt-Regular.ttf';
 const FONT_B = '/rom/font/Inter_18pt-Medium.ttf';
 const ICON_FONT = '/rom/font/DroidSansMNerdFont-Regular.otf';
 
-export default function main()
+async function setup ()
 {
 	Hypr.connect();
-	globalThis.wallpaper = new Wallpaper({
-		fadeTime: 1 // seconds
-	});
-	globalThis.wallpaper.changeTo('/rom/image/wallhaven-yxrkm7.png');
-
-	// Demo of wallpaper cycling.
-	// This could also be configured to change wallpaper based on workspace
-	setTimeout(() => { globalThis.wallpaper.changeTo('/rom/image/wallhaven-gpelxl.jpg'); }, 30000);
-	setTimeout(() => { globalThis.wallpaper.changeTo('/rom/image/wallhaven-yxrkm7.png'); }, 60000);
-
-	globalThis.workspaces = new HyprWorkspaces({
+	const workspaceConfig = {
 		font: FONT,
 		background: '#000000aa',
 		colour: '#dddddd',
 		highlight: ['#663399ff', '#66339933'],
 		urgent:    ['#fa5f5fff', '#00000000']
-	});
+	};
 
-	globalThis.statusBar = new Bar({
+	const barConfig = {
 		monitor: '', // Defaults to primary
 		thickness: 48,
 		font: FONT_B,
@@ -68,6 +55,44 @@ export default function main()
 		battery: {
 			order: 1
 		}
+	};
+
+	// Prioritize bar creation so something is visible quickly.
+	globalThis.statusBar = await Bar.create(barConfig);
+
+	// Start heavier subsystems in the background.
+	Wallpaper.create({ fadeTime: 1 })
+		.then(async (wallpaper) => {
+			globalThis.wallpaper = wallpaper;
+			await wallpaper.changeTo('/rom/image/wallhaven-yxrkm7.png');
+
+			// Demo of wallpaper cycling.
+			// This could also be configured to change wallpaper based on workspace
+			setTimeout(() => {
+				wallpaper.changeTo('/rom/image/wallhaven-gpelxl.jpg').catch(() => {});
+			}, 30000);
+			setTimeout(() => {
+				wallpaper.changeTo('/rom/image/wallhaven-yxrkm7.png').catch(() => {});
+			}, 60000);
+		})
+		.catch((e) => {
+			Log.error(e?.message || String(e));
+		});
+
+	HyprWorkspaces.create(workspaceConfig)
+		.then((workspaces) => {
+			globalThis.workspaces = workspaces;
+		})
+		.catch((e) => {
+			Log.error(e?.message || String(e));
+		});
+}
+
+export default function main()
+{
+	setup().catch((e) => {
+		Log.error(e?.message || String(e));
+		if(e?.stack) Log.debug(e.stack);
 	});
 }
 

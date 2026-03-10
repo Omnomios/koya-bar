@@ -8,8 +8,22 @@ export class Battery
     {
         this.win = win;
         this.config = config;
+        this.element = -1;
+        this.batteryText = -1;
+        this.batteryIcon = -1;
+        this.batteryStatus = -1;
+    }
 
-        this.element = UI.createElement(this.win, {
+    static async create (win, config)
+    {
+        const battery = new Battery(win, config);
+        await battery.setup();
+        return battery;
+    }
+
+    async setup ()
+    {
+        this.element = await UI.createElement(this.win, {
             layout: {
                 type: 'row',
                 wrap: false,
@@ -31,7 +45,8 @@ export class Battery
                         string: '76%',
                         size: 9,
                     },
-                    contentAlign: { x: 'end', y: 'center' }
+                    contentAlign: { x: 'end', y: 'center' },
+                    item: { size: { x: 24, y: 12 } }
                 },
                 {
                     id: 'batteryIcon',
@@ -42,14 +57,15 @@ export class Battery
                         string: '\udb80\udc83',
                         size: 12,
                     },
-                    contentAlign: { x: 'start', y: 'center' }
+                    contentAlign: { x: 'start', y: 'center' },
+                    item: { size: { x: 14, y: 12 } }
                 }
             ]
         });
-        this.batteryText = UI.getElementById(this.win, 'batteryText');
-        this.batteryIcon = UI.getElementById(this.win, 'batteryIcon');
+        this.batteryText = await UI.getElementById(this.win, 'batteryText');
+        this.batteryIcon = await UI.getElementById(this.win, 'batteryIcon');
 
-        this.batteryStatus = UI.createElement(this.win, {
+        this.batteryStatus = await UI.createElement(this.win, {
             renderable: {
                 type: 'text',
                 colour: "#0f0",
@@ -59,8 +75,7 @@ export class Battery
                 position: {x: 3, y:3}
             },
         });
-        UI.attach(this.win, this.batteryIcon, this.batteryStatus);
-
+        await UI.attach(this.win, this.batteryIcon, this.batteryStatus);
     }
 
     async init ()
@@ -130,26 +145,26 @@ export class Battery
                 this._hasBattery = hasBattery;
                 if(!hasBattery)
                 {
-                    UI.setEnabled(this.win, this.element, false);
+                    await UI.setEnabled(this.win, this.element, false);
                     return;
                 }
-                UI.setEnabled(this.win, this.element, true);
+                await UI.setEnabled(this.win, this.element, true);
 
                 // Battery percentage
                 let pct = props?.Percentage;
                 if(typeof pct !== 'number') pct = parseFloat(pct);
                 if(!Number.isFinite(pct)) pct = 0;
                 const percent = Math.max(0, Math.min(100, Math.round(pct)));
-                UI.setTextString(this.win, this.batteryText, `${percent}%`);
+                await UI.setTextString(this.win, this.batteryText, `${percent}%`);
                 const bucket = (percent === 100) ? 100 : Math.max(10, Math.floor(percent / 10) * 10);
                 const key = `battery${bucket}`;
-                UI.setTextString(this.win, this.batteryIcon, this.iconSet[key] || this.iconSet['battery100']);
+                await UI.setTextString(this.win, this.batteryIcon, this.iconSet[key] || this.iconSet['battery100']);
 
                 // charging status overlay
                 let stateVal = props?.State;
                 if(typeof stateVal !== 'number') stateVal = parseInt(stateVal);
                 const isCharging = stateVal === 1 || stateVal === 5; // Charging or PendingCharge
-                UI.setTextString(this.win, this.batteryStatus, isCharging ? this.iconSet['statusCharge'] : '');
+                await UI.setTextString(this.win, this.batteryStatus, isCharging ? this.iconSet['statusCharge'] : '');
             }
             catch(_)
             {
@@ -168,7 +183,7 @@ export class Battery
                 {
                     if(sig && sig.path && (sig.path === this._upowerDevicePath || sig.path.startsWith('/org/freedesktop/UPower/devices/')))
                     {
-                        refresh();
+                        refresh().catch(() => {});
                     }
                 }
                 catch(_){ }

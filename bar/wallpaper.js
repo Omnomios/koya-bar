@@ -19,13 +19,24 @@ export class Wallpaper
     constructor (config = {})
     {
         this.config = config;
-
         this.backgrounds = {};
-        for(const display of Compositor.listDisplays())
+    }
+
+    static async create (config = {})
+    {
+        const wallpaper = new Wallpaper(config);
+        await wallpaper.init();
+        return wallpaper;
+    }
+
+    async init ()
+    {
+        const displays = await Compositor.listDisplays();
+        for(const display of displays)
         {
             this.backgrounds[display.display] = {};
 
-            const win = Compositor.createWindow({
+            const win = await Compositor.createWindow({
                 key: `background:${display.display}`,
                 role: 'background',
                 namespace: 'koya-background',
@@ -33,7 +44,8 @@ export class Wallpaper
                 exclusiveZone: -1
             });
 
-            const root = UI.createElement(win, {
+            const root = await UI.createElement(win, {
+                item: { size: { x: display.logical_width, y: display.logical_height } },
                 child: [
                     {
                         id: 'canvasA',
@@ -44,7 +56,7 @@ export class Wallpaper
                                 max: { x: display.logical_width, y: display.logical_height }
                             }
                         },
-                        item:{ order: 1 }
+                        item: { order: 1, size: { x: display.logical_width, y: display.logical_height } }
                     },
                     {
                         id: 'canvasB',
@@ -55,7 +67,7 @@ export class Wallpaper
                                 max: { x: display.logical_width, y: display.logical_height }
                             }
                         },
-                        item:{ order: 2 }
+                        item: { order: 2, size: { x: display.logical_width, y: display.logical_height } }
                     }
                 ]
             });
@@ -65,18 +77,18 @@ export class Wallpaper
             // card slide, zoomfade, rotate, or even use a custom shader to do something even more detailed
             // https://www.koya-ui.com/ui-animation/index.html
 
-            const canvasA = UI.getElementById(win, 'canvasA');
+            const canvasA = await UI.getElementById(win, 'canvasA');
             const animA = {
-                hidden: UI.addAnimation(win, canvasA, [{time:0, opacity:0}]),
-                shown: UI.addAnimation(win, canvasA, [{time:0, opacity:1}]),
-                show: UI.addAnimation(win, canvasA, [{time:0, opacity:0}, {time:this.config.fadeTime, opacity:1}])
+                hidden: await UI.addAnimation(win, canvasA, [{time:0, opacity:0}]),
+                shown: await UI.addAnimation(win, canvasA, [{time:0, opacity:1}]),
+                show: await UI.addAnimation(win, canvasA, [{time:0, opacity:0}, {time:this.config.fadeTime, opacity:1}])
             };
 
-            const canvasB = UI.getElementById(win, 'canvasB');
+            const canvasB = await UI.getElementById(win, 'canvasB');
             const animB = {
-                hidden: UI.addAnimation(win, canvasB, [{time:0, opacity:0}]),
-                shown: UI.addAnimation(win, canvasB, [{time:0, opacity:1}]),
-                show: UI.addAnimation(win, canvasB, [{time:0, opacity:0}, {time:this.config.fadeTime, opacity:1}])
+                hidden: await UI.addAnimation(win, canvasB, [{time:0, opacity:0}]),
+                shown: await UI.addAnimation(win, canvasB, [{time:0, opacity:1}]),
+                show: await UI.addAnimation(win, canvasB, [{time:0, opacity:0}, {time:this.config.fadeTime, opacity:1}])
             };
 
 
@@ -88,20 +100,21 @@ export class Wallpaper
             this.backgrounds[display.display].animA = animA;
             this.backgrounds[display.display].animB = animB;
 
-            UI.startAnimation(win, canvasA, animA.hidden);
-            UI.startAnimation(win, canvasB, animB.hidden);
-            UI.attachRoot(win, root);
+            await UI.startAnimation(win, canvasA, animA.hidden);
+            await UI.startAnimation(win, canvasB, animB.hidden);
+            await UI.attachRoot(win, root);
         }
     }
 
-    changeTo (path, display = '*')
+    async changeTo (path, display = '*')
     {
         // Ugh. wildcard
         if(display == '*')
         {
-            for(const d of Compositor.listDisplays())
+            const displays = await Compositor.listDisplays();
+            for(const d of displays)
             {
-                this.changeTo(path, d.display);
+                await this.changeTo(path, d.display);
             }
             return;
         }
@@ -121,7 +134,7 @@ export class Wallpaper
             case "avi":
             case "gif":
             case "apng":
-                assetKey = `/ram/video/${display.display}:${path}`;
+                assetKey = `/ram/video/${display}:${path}`;
                 // Need to ask ffmpeg to help us out.
                 ff.load(win, assetKey, path);
                 break;
@@ -137,18 +150,18 @@ export class Wallpaper
 
         if(!assetKey) return;
 
-        UI.onAnimationEnd(win, canvasB, animB.show, () => {
+        await UI.onAnimationEnd(win, canvasB, animB.show, async () => {
             if(this.backgrounds[display].current?.includes('/ram/video'))
             {
                 //ff.stop(this.backgrounds[display].current);
             }
             this.backgrounds[display].current = assetKey;
-            UI.setTexture(win, canvasA, assetKey);
-            UI.startAnimation(win, canvasB, animB.hide);
-            UI.startAnimation(win, canvasA, animA.shown);
+            await UI.setTexture(win, canvasA, assetKey);
+            await UI.startAnimation(win, canvasB, animB.hidden);
+            await UI.startAnimation(win, canvasA, animA.shown);
         });
 
-        UI.setTexture(win, canvasB, assetKey);
-        UI.startAnimation(win, canvasB, animB.show);
+        await UI.setTexture(win, canvasB, assetKey);
+        await UI.startAnimation(win, canvasB, animB.show);
     }
 }
