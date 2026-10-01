@@ -1,6 +1,6 @@
 import * as Compositor from 'Koya/Compositor';
-import * as UI  from 'Koya/UserInterface';
-import * as Log from 'Koya/Log';
+import * as UI  from 'Helix/UserInterface';
+import * as Log from 'Helix/Log';
 import * as DBus from 'Module/dbus';
 
 export class Power
@@ -109,8 +109,8 @@ export class Power
             for (const p of ['power-saver','balanced','performance'])
             {
                 let el = this.iconElements?.[p];
-                if(!el) el = await UI.getElementById(this.win, `pp:${p}`);
-                if(!el) { Log.warn(`[PPD] icon not found: ${p}`); continue; }
+                if(el === undefined || el < 0) el = await UI.getElementById(this.win, `pp:${p}`);
+                if(el < 0) { Log.warn(`[PPD] icon not found: ${p}`); continue; }
                 const colour = (p === active) ? this.config.colour : this.config.disabledColour;
                 await UI.setTextColour(this.win, el, colour);
             }
@@ -163,7 +163,7 @@ export class Power
                     if(!sig) return;
                     const isProps = sig.member === 'PropertiesChanged' && sig.interface === 'org.freedesktop.DBus.Properties';
                     const onPath = (sig.path === '/net/hadess/PowerProfiles');
-                    if(isProps && (onPath || (sig.body === 'net.hadess.PowerProfiles')))
+                    if(isProps && onPath && sig.args[0] === 'net.hadess.PowerProfiles')
                     {
                         this.refresh().catch(() => {});
                     }
@@ -174,5 +174,4 @@ export class Power
         catch(_){ }
     }
 }
-
 

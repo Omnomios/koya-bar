@@ -1,6 +1,5 @@
 import * as Compositor from 'Koya/Compositor';
-import * as Log from 'Koya/Log';
-import * as UI from 'Koya/UserInterface';
+import * as UI from 'Helix/UserInterface';
 import * as ff from 'Module/ffmpeg';
 
 
@@ -18,7 +17,7 @@ export class Wallpaper
 {
     constructor (config = {})
     {
-        this.config = config;
+        this.config = { fadeTime: 1, ...config };
         this.backgrounds = {};
     }
 
@@ -44,8 +43,12 @@ export class Wallpaper
                 exclusiveZone: -1
             });
 
+            // Display descriptors contain strings and may omit logical dimensions.
+            // The configured window reports numeric dimensions in logical pixels.
+            const { width, height } = await Compositor.getWindowInfo(win);
+
             const root = await UI.createElement(win, {
-                item: { size: { x: display.logical_width, y: display.logical_height } },
+                item: { size: { x: width, y: height } },
                 child: [
                     {
                         id: 'canvasA',
@@ -53,10 +56,10 @@ export class Wallpaper
                             type: 'box',
                             aabb: {
                                 min: { x: 0, y: 0 },
-                                max: { x: display.logical_width, y: display.logical_height }
+                                max: { x: width, y: height }
                             }
                         },
-                        item: { order: 1, size: { x: display.logical_width, y: display.logical_height } }
+                        item: { order: 1, size: { x: width, y: height } }
                     },
                     {
                         id: 'canvasB',
@@ -64,10 +67,10 @@ export class Wallpaper
                             type: 'box',
                             aabb: {
                                 min: { x: 0, y: 0 },
-                                max: { x: display.logical_width, y: display.logical_height }
+                                max: { x: width, y: height }
                             }
                         },
-                        item: { order: 2, size: { x: display.logical_width, y: display.logical_height } }
+                        item: { order: 2, size: { x: width, y: height } }
                     }
                 ]
             });
@@ -119,7 +122,7 @@ export class Wallpaper
             return;
         }
 
-        const {win, canvasA, canvasB, animA, animB, active} = this.backgrounds[display];
+        const {win, canvasA, canvasB, animA, animB} = this.backgrounds[display];
 
         let assetKey = false;
         switch(getExtension(path).toLowerCase())
@@ -151,9 +154,10 @@ export class Wallpaper
         if(!assetKey) return;
 
         await UI.onAnimationEnd(win, canvasB, animB.show, async () => {
-            if(this.backgrounds[display].current?.includes('/ram/video'))
+            if(this.backgrounds[display].current?.startsWith('/ram/video/') &&
+                this.backgrounds[display].current !== assetKey)
             {
-                //ff.stop(this.backgrounds[display].current);
+                ff.stop(win, this.backgrounds[display].current);
             }
             this.backgrounds[display].current = assetKey;
             await UI.setTexture(win, canvasA, assetKey);

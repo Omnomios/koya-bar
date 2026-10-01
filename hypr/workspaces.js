@@ -1,6 +1,6 @@
 import * as Compositor from 'Koya/Compositor';
-import * as UI from 'Koya/UserInterface';
-import * as Log from 'Koya/Log';
+import * as UI from 'Helix/UserInterface';
+import * as Log from 'Helix/Log';
 import * as Hypr from 'Module/hypr';
 
 class WorkspaceCell
@@ -13,12 +13,13 @@ class WorkspaceCell
         this.workspace = workspace;
         this.isUrgent = false;
         this.isFocussed = false;
+        this.boxElement = -1;
     }
 
     async createUI ()
     {
         // If it already exists, nuke it.
-        if(this.boxElement)
+        if(this.boxElement >= 0)
         {
             await this.destroy();
         }
@@ -118,7 +119,7 @@ class WorkspaceCell
 
     async focus (enabled)
     {
-        if(!this.boxElement) return;
+        if(this.boxElement < 0) return;
 
         this.isFocussed = enabled;
         await UI.setEnabled(this.window.win, this.topLine, enabled || this.isUrgent);
@@ -133,8 +134,9 @@ class WorkspaceCell
 
     async destroy ()
     {
-        if(!this.boxElement) return;
+        if(this.boxElement < 0) return;
         await UI.destroyElement(this.window.win, this.boxElement);
+        this.boxElement = -1;
     }
 
     getMonitor ()
@@ -162,12 +164,13 @@ class DisplayWindow
         this.monitor = display;
         this.hideTimer = 0;
         this.visible = true;
+        this.win = -1;
     }
 
     async createUI ()
     {
         // If it already exists, tear it down
-        if(this.win) await Compositor.destroyWindow(this.win);
+        if(this.win >= 0) await Compositor.destroyWindow(this.win);
 
         this.win = await Compositor.createWindow({
             namespace: 'koya',

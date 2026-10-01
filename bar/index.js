@@ -1,5 +1,5 @@
 import * as Compositor from 'Koya/Compositor';
-import * as UI         from 'Koya/UserInterface';
+import * as UI         from 'Helix/UserInterface';
 
 import { DateTime } from './module/datetime.js'
 import { Network }  from './module/network.js'

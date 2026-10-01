@@ -1,5 +1,5 @@
-import * as UI  from 'Koya/UserInterface';
-import * as Log from 'Koya/Log';
+import * as UI  from 'Helix/UserInterface';
+import * as Log from 'Helix/Log';
 import * as DBus from 'Module/dbus';
 
 export class Battery

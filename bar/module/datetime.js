@@ -1,5 +1,5 @@
 import * as Compositor from 'Koya/Compositor';
-import * as UI         from 'Koya/UserInterface';
+import * as UI         from 'Helix/UserInterface';
 
 import dayjs          from '../../lib/dayjs/index.js';
 import advancedFormat from '../../lib/dayjs/plugin/advancedFormat/index.js'

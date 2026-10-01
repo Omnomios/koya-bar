@@ -1,5 +1,5 @@
-import * as UI  from 'Koya/UserInterface';
-import * as Log from 'Koya/Log';
+import * as UI  from 'Helix/UserInterface';
+import * as Log from 'Helix/Log';
 
 import * as NetworkManager from '../../lib/NetworkManager.js';
 
@@ -44,9 +44,12 @@ export class Network
 			await NetworkManager.getModem(1).catch((e)=>{return false;})
 		];
 
-        NetworkManager.activityMonitor((event) => {
+        this.stopMonitoring = await NetworkManager.activityMonitor((event) => {
 
-            if(event.interface == 'org.freedesktop.NetworkManager.Device')
+            if(event.interface === 'org.freedesktop.NetworkManager.Device' ||
+                (event.interface === 'org.freedesktop.DBus.Properties' &&
+                 event.member === 'PropertiesChanged' &&
+                 event.args[0] === 'org.freedesktop.NetworkManager.Device'))
             {
                 const connection = this.connections.find(i=>i.status.devPath == event.path);
                 if(!connection) return;

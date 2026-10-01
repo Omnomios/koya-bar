@@ -1,5 +1,5 @@
 import * as Hypr from 'Module/hypr';
-import * as Log from 'Koya/Log';
+import * as Log from 'Helix/Log';
 
 import { HyprWorkspaces } from './hypr/workspaces.js';
 import { Bar } from './bar/index.js';
