@@ -101,8 +101,19 @@ Use additional native modules (DBus, HTTP, Process, SQLite, WebSocket) to extend
 
 ### Compatibility checks
 
-Run `node --experimental-vm-modules --test tests/*.test.mjs` to exercise the bar against Koya 0.5.3 API doubles, including typed DBus replies/signals, complex argument marshalling, numeric wallpaper geometry, and video stream cleanup. These checks require Node.js 18+; the bar itself runs in Koya's QuickJS runtime. Validate rendering and desktop interaction in a Hyprland session with the matching native plugins.
+The tests run JavaScript in Koya's QuickJS runtime with the real `dbus`, `hypr`, and `ffmpeg` plugins. A private DBus daemon hosts fixture services; a Python fixture provides Hyprland IPC sockets. The tests never contact your desktop's buses or Hyprland socket.
+
+Run the module-loading and native IPC checks without a display:
+
+```sh
+KOYA_BIN=/path/to/koya \
+KOYA_PLUGIN_DIR=/path/to/plugins \
+bash tests/run.sh ipc
+```
+
+For the full rendering checks, also set `WESTON_SHELL=/path/to/weston-kiosk-shell.so` and run `bash tests/run.sh`. Use a [Weston shell with layer-shell support](https://github.com/Omnomios/weston-kiosk-shell), built for your installed Weston version. The full suite starts a private headless Weston display and verifies the bar, typed status updates, wallpaper geometry, animation completion, video cleanup, rendered PNG output, and workspace UI.
+
+Requirements: Koya 0.5.3+ with matching plugins, Bash, Python 3, DBus, `timeout`, and `rg`. The full suite also needs FFmpeg, Weston, and a Vulkan driver supporting Koya's required presentation features. Runtime version and pass/fail markers appear in the output; a missing pass marker, failed assertion, crash, or timeout makes the runner fail.
 
 — Powered by Koya
 [koya-ui.com](https://www.koya-ui.com)
-
