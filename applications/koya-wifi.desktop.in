@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Koya Wi-Fi
+GenericName=Wireless Network Settings
+Comment=Connect to and manage wireless networks
+Exec="@SHELL_ROOT@/wifi.sh"
+Icon=@SHELL_ROOT@/assets/status/wifi-3.png
+Terminal=false
+Categories=Settings;X-Network;
+Keywords=Koya;Wireless;WiFi;Network;
+StartupWMClass=org.koya.Wifi

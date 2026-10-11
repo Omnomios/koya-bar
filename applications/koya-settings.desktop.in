@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Koya Settings
+GenericName=Desktop Settings
+Comment=Choose your desktop wallpaper
+Exec="@SHELL_ROOT@/settings.sh"
+Icon=@SHELL_ROOT@/assets/launcher/koya-settings.png
+Terminal=false
+Categories=Settings;DesktopSettings;
+Keywords=Koya;Wallpaper;Preferences;
+StartupWMClass=org.koya.Settings

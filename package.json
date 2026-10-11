@@ -1,0 +1,6 @@
+{
+  "name": "koya-bar",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node tests/models.mjs && node tests/ssh-agent-model.mjs && node --experimental-vm-modules tests/cursor.mjs && node --experimental-vm-modules tests/batching.mjs" }
+}

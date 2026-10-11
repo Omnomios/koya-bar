@@ -1,0 +1,437 @@
+import * as UI from 'Helix/UserInterface';
+import * as Compositor from 'Koya/Compositor';
+import * as Event from 'Helix/Event';
+import * as Log from 'Helix/Log';
+import { appFrame } from './app-frame.js';
+import { wifiNetwork } from './wifi-network.js';
+import { icon, text, label, pill, toggle, throbber, children } from './touch-ui.js';
+import { controlCursor } from './cursor.js';
+import { clips } from './motion.js';
+import { FONT, CREAM, ORANGE, INK, CARD, MUTED, GUTTER, SPACE, RADIUS, TYPE, TOUCH, ROW } from './theme.js';
+
+const SLOT = 24, FIELD = 44;
+const idOf = network => network.path.split('/').pop();
+const bars = network => Math.max(0, Math.min(3, Math.ceil(Number(network.Strength) * 3 / 100)));
+const signal = network => '/rom/assets/status/wifi-' + bars(network) + '.png';
+const quality = strength => strength >= 75 ? 'Excellent' : strength >= 50 ? 'Good' : strength >= 25 ? 'Fair' : 'Weak';
+const securityName = kind => ({ open: 'None', 'wpa-psk': 'WPA/WPA2 Personal', sae: 'WPA3 Personal', owe: 'Enhanced Open',
+  wep: 'WEP', enterprise: 'Enterprise' })[kind] || kind;
+const statusOf = network => network.connected ? 'Connected' : network.saved ? 'Saved' : network.security === 'open' ? 'Open'
+  : network.security === 'owe' ? 'Encrypted' : !network.supported ? 'Requires advanced network settings' : 'Password required';
+
+export default async (options = {}) => {
+  let latest = { networks: [], loading: true }, form, detail, password = '', preedit = '', reveal = false, focused = false, submitted = false;
+  let field, entry, focusRing, caret, caretBlink, caretRunning = false, listPage = 0, connectFeedback;
+  let backend;
+  const frame = await appFrame({ title: 'Wi-Fi', namespace: 'koya-wifi', name: 'Wi-Fi',
+    hint: () => latest.loading ? 'Finding networks…' : latest.working && latest.message ? latest.message
+      : latest.hardware === false ? 'Wi-Fi is blocked by the device' : latest.enabled === false && !form && !detail ? 'Wi-Fi is off' : '',
+    onBack: () => back(),
+    onClose: () => { backend?.dispose(); keyboard(false); } });
+  const { win, play, hidden, punch, shake, flash, host } = frame;
+
+  // ---- Password field and desktop input method --------------------------
+  const keyboard = async (visible, newFocus = false, changeCause = 'other') => {
+    if (options.keyboard === false) return;
+    try {
+      await Compositor.setTextInput(win, visible ? {
+        enabled: true, newFocus, inputId: field, cursorElement: field, changeCause,
+        contentPurpose: 8, contentHint: 64 | 128
+        // Passwords stay local: never provide surroundingText to input methods.
+      } : { enabled: false });
+    } catch (error) { Log.error('Wi-Fi text input: ' + error); }
+  };
+  const updateField = async (changeCause = 'other') => {
+    if (!field) return;
+    const value = password + preedit;
+    const display = value ? reveal ? value : '•'.repeat(Array.from(value).length) : focused ? '' : 'Password';
+    await Promise.all([UI.setTextString(win, field, display),
+      UI.setTextColour(win, field, value || focused ? CREAM : MUTED), UI.setEnabled(win, focusRing, focused)]);
+    const position = await UI.getTextCaretPosition(win, field, focused ? Array.from(display).length : 0);
+    const x = Number(position?.x || 0), scroll = Math.max(0, x - (frame.width - 28));
+    const blinking = focused && !!form && !latest.working;
+    await Promise.all([UI.setPosition(win, field, { x: -scroll, y: 0 }),
+      UI.setPosition(win, caret, { x: x - scroll, y: 0 }), UI.setEnabled(win, caret, blinking)]);
+    if (blinking !== caretRunning) {
+      caretRunning = blinking;
+      if (blinking) await caretBlink.play('blink');
+      else await UI.stopAnimation(win, caret);
+    }
+    // Keep desktop input-method state in step with the editable field.
+    keyboard(blinking, false, changeCause);
+  };
+  const focusField = async () => {
+    if (!form || latest.working) return;
+    const newFocus = !focused;
+    focused = true;
+    await updateField();
+    if (newFocus) { keyboard(true, true); punch(entry, 1.02); }
+  };
+  const submit = async () => {
+    if (!form || latest.working) return;
+    const network = form, secret = password;
+    submitted = true; focused = false;
+    await frame.enqueue(updateField);
+    connectFeedback?.begin().catch(() => {});
+    const accepted = await backend.connect(network, secret);
+    if (form !== network) return;
+    if (!accepted) {
+      connectFeedback?.end().catch(() => {});
+      await frame.enqueue(updateField);
+      if (latest.error) { flash(latest.error, ORANGE, 4000); shake(entry); }
+    }
+  };
+
+  // ---- Pages -------------------------------------------------------------
+  const listPageBuild = async () => {
+    const page = await frame.newPage(), ok = frame.live(page);
+    page.hint = 'Tap a network to connect';
+    // Wide screens: the switch and scan controls on the left, the list on the
+    // right with the full height. Portrait stacks them in the page column.
+    const wide = frame.size.x > frame.size.y;
+    const width = wide ? (frame.width - SPACE.l) / 2 : frame.width;
+    let controls = page.el, listParent = page.el;
+    if (wide) {
+      const columns = await UI.createElement(win, { layout: { type: 'row', gap: SPACE.l }, item: { size: { x: frame.width, y: frame.stageHeight - SPACE.xs - GUTTER } } });
+      await UI.attach(win, page.el, columns);
+      [controls, listParent] = await children(win, columns, [
+        UI.createElement(win, { layout: { type: 'column', gap: SPACE.s }, item: { size: { x: width, y: frame.stageHeight - SPACE.xs - GUTTER } } }),
+        UI.createElement(win, { layout: { type: 'column', gap: SPACE.s }, item: { size: { x: width, y: frame.stageHeight - SPACE.xs - GUTTER } } })
+      ]);
+    }
+    // Master switch: the same row anatomy as a Settings toggle.
+    let power;
+    const flipPower = () => {
+      if (!ok() || latest.working || latest.hardware === false) { shake(powerRow.target); return; }
+      power.set(!latest.enabled);
+      backend.toggle();
+    };
+    let refresh, refreshLabel, spinner;
+    // Power row, section line and the pager's reserved strip are fixed.
+    const listHeight = frame.stageHeight - SPACE.xs - GUTTER - TOUCH - SPACE.s - (wide ? 0 : ROW + 32 + 2 * SPACE.s);
+    const count = Math.max(1, Math.floor((listHeight + SPACE.s) / (ROW + SPACE.s)));
+    const [powerRow, heading, box] = await Promise.all([
+      frame.navigate(null, 'Wi-Fi', '', ROW, flipPower, { width, trailing: 56,
+        trailingBuild: async target => { power = await toggle(win, target, !!latest.enabled, flipPower); await UI.setElementId(win, power.id, 'wifi-power'); return power; } }),
+      // Section line: the caption, a throbber right after it while a scan
+      // runs, and Refresh (dimmed meanwhile) at the trailing edge.
+      (async () => {
+        const LINE = 32, CAPTION = 'Available networks';
+        const line = await UI.createElement(win, { layout: { type: 'row', alignItems: 'center', gap: SPACE.s }, item: { size: { x: width, y: LINE } } });
+        let caption, spacer;
+        [caption, spinner, spacer, refresh] = await Promise.all([
+          text(win, null, CAPTION, TYPE.caption, width - 88 - 14 - 3 * SPACE.s, LINE, MUTED, undefined, 'left'),
+          throbber(win, null, 14, CREAM, LINE),
+          UI.createElement(win, { item: { size: { x: 0, y: LINE }, flexGrow: 1 } }),
+          pill(win, null, 'Refresh', 88, () => {
+            if (!ok() || !latest.enabled || latest.scanning || latest.working) return;
+            backend.scan();
+          }, { labelColour: latest.scanning ? MUTED : ORANGE, height: 28, onLabel: id => { refreshLabel = id; } })
+        ]);
+        await Promise.all([caption, spinner.id, spacer, refresh].map(id => UI.attach(win, line, id)));
+        // Fit the caption to its text so the throbber sits right after it.
+        const end = await UI.getTextCaretPosition(win, caption, CAPTION.length);
+        await Promise.all([UI.setLayoutSize(win, caption, { x: Math.ceil(Number(end?.x || 0)) + 2, y: LINE }),
+          UI.setElementId(win, refresh, 'wifi-refresh')]);
+        if (latest.scanning) spinner.start();
+        return { line };
+      })(),
+      UI.createElement(win, host({ layout: { type: 'column', gap: SPACE.s }, item: { size: { x: width, y: listHeight } } }))
+    ]);
+    await Promise.all([UI.attach(win, controls, powerRow.target), UI.attach(win, controls, heading.line), UI.attach(win, listParent, box)]);
+    page.items.push(powerRow.target, heading.line);
+    let shape, rows = new Map(), wasScanning = !!latest.scanning;
+    const powerText = () => latest.hardware === false ? 'Blocked by the device' : !latest.enabled ? 'Off'
+      : latest.networks.find(item => item.connected) ? 'Connected to ' + latest.networks.find(item => item.connected).name : 'On · not connected';
+    // Rows rebuild only when the list's shape changes; signal, captions and
+    // the switch otherwise update in place, so the list never flickers.
+    const buildRows = async animate => {
+      const pages = Math.max(1, Math.ceil(latest.networks.length / count));
+      listPage = Math.min(listPage, pages - 1);
+      const visible = latest.enabled ? latest.networks.slice(listPage * count, (listPage + 1) * count) : [];
+      await Promise.all([...rows.values()].map(child => UI.destroyElement(win, child.target))
+        .concat(rows.empty ? [UI.destroyElement(win, rows.empty)] : []));
+      rows = new Map();
+      if (!visible.length) {
+        rows.empty = await text(win, box, latest.loading ? '' : latest.enabled ? 'No networks found' : 'Turn Wi-Fi on to find networks', TYPE.body, width, 120, MUTED);
+      }
+      const built = await Promise.all(visible.map(async network => {
+        let rowIcon;
+        const trailing = await frame.navigate(null, network.name, statusOf(network), ROW, () => select(network), {
+          width, lead: 28 + 12, trailing: 2 * SLOT, valueColour: network.connected ? ORANGE : MUTED,
+          leading: async target => { rowIcon = await icon(win, target, signal(network), 20, 28, ROW); return rowIcon; },
+          trailingBuild: async target => {
+            // Every row ends in the same two slots: lock, then chevron. Locks
+            // line up whether or not a network has details to open.
+            const slots = await UI.createElement(win, { layout: { type: 'row', alignItems: 'center' }, item: { size: { x: 2 * SLOT, y: ROW } } });
+            if (target != null) await UI.attach(win, target, slots);
+            const lock = await UI.createElement(win, { item: { size: { x: SLOT, y: ROW } } });
+            await UI.attach(win, slots, lock);
+            const [, chevron] = await Promise.all([
+              network.security !== 'open' ? icon(win, lock, '/rom/assets/power-menu/lock.png', 13, SLOT, ROW) : undefined,
+              network.connected || network.saved ? frame.chevron(slots, ROW) : undefined
+            ]);
+            return { id: slots, nudge: chevron?.nudge };
+          } });
+        await UI.setElementId(win, trailing.target, 'wifi-network-' + idOf(network));
+        return { target: trailing.target, caption: trailing.valueLabel, icon: rowIcon, network };
+      }));
+      await Promise.all(built.map(entry => UI.attach(win, box, entry.target)));
+      built.forEach((entry, index) => {
+        rows.set(entry.network.key, entry);
+        if (animate) frame.rise(entry.target, 0.03 + index * 0.03);
+        else page.items.push(entry.target);
+      });
+      page.pager = pages > 1 ? { group: 'wifi', count: pages, index: listPage,
+        turn: step => { if (ok() && listPage + step >= 0 && listPage + step < pages) { listPage += step; frame.go(listPageBuild, { title: 'Wi-Fi', direction: step }); } } } : undefined;
+      // A rebuild in place can change the page count; the marker follows.
+      if (animate) await frame.syncPager(page.pager);
+      shape = shapeOf();
+    };
+    const shapeOf = () => JSON.stringify([latest.enabled, latest.loading, listPage, latest.networks.map(item => [item.key, item.connected, !!item.saved])]);
+    await buildRows(false);
+    page.update = async () => {
+      if (!page.alive) return;
+      await Promise.all([
+        UI.setTextString(win, powerRow.valueLabel, powerText()),
+        UI.setTextColour(win, powerRow.valueLabel, latest.networks.some(item => item.connected) && latest.enabled ? ORANGE : MUTED),
+        ...(!latest.working ? [power.set(!!latest.enabled)] : [])
+      ]);
+      // The button itself stays still while busy: motion on a button reads
+      // as a call to press it.
+      if (latest.scanning !== wasScanning) {
+        wasScanning = latest.scanning;
+        await Promise.all([latest.scanning ? spinner.start() : spinner.stop(),
+          UI.setTextColour(win, refreshLabel, latest.scanning ? MUTED : ORANGE)]);
+      }
+      if (shapeOf() !== shape) {
+        await buildRows(true);
+        return;
+      }
+      await Promise.all([...rows.values()].flatMap(entryRow => {
+        const network = latest.networks.find(item => item.key === entryRow.network.key) || entryRow.network;
+        entryRow.network = network;
+        return [UI.setTextString(win, entryRow.caption, latest.working && latest.message?.includes(network.name) ? 'Connecting…' : statusOf(network)),
+          UI.setTexture(win, entryRow.icon, signal(network))];
+      }));
+    };
+    await Promise.all([UI.setTextString(win, powerRow.valueLabel, powerText()),
+      UI.setTextColour(win, powerRow.valueLabel, latest.networks.some(item => item.connected) && latest.enabled ? ORANGE : MUTED)]);
+    return page;
+  };
+
+  const detailPageBuild = async () => {
+    const page = await frame.newPage(SPACE.m), ok = frame.live(page), width = frame.width;
+    const network = () => latest.networks.find(item => item.key === detail.key) || detail;
+    page.hint = network().connected ? 'Connected' : 'Saved network';
+    // Facts first, in one quiet card; actions below it.
+    const card = await UI.createElement(win, { renderable: { type: 'box', colour: CARD, cornerRadius: RADIUS.surface, cornerResolution: 16 },
+      layout: { type: 'column', padding: { l: 12, r: 12, t: SPACE.xs, b: SPACE.xs } }, item: { size: { x: width, y: 3 * 36 + 2 * SPACE.xs } }, contentAlign: 'fill' });
+    await UI.attach(win, page.el, card);
+    const keys = ['Status', 'Signal', 'Security'];
+    const lines = await Promise.all(keys.map(async key => {
+      const line = await UI.createElement(win, { layout: { type: 'row', alignItems: 'center' }, item: { size: { x: width - 24, y: 36 } } });
+      const [, value] = await children(win, line, [
+        label(win, null, key, TYPE.body, (width - 24) / 2, 36, MUTED),
+        text(win, null, '', TYPE.body, (width - 24) / 2, 36, CREAM, undefined, 'right')
+      ]);
+      return { line, key, value };
+    }));
+    await Promise.all(lines.map(({ line }) => UI.attach(win, card, line)));
+    const facts = Object.fromEntries(lines.map(({ key, value }) => [key, value]));
+    page.items.push(card);
+    const paint = async () => {
+      const current = network();
+      await Promise.all([
+        UI.setTextString(win, facts.Status, current.connected ? 'Connected' : latest.working ? 'Connecting…' : 'Not connected'),
+        UI.setTextColour(win, facts.Status, current.connected ? ORANGE : CREAM),
+        UI.setTextString(win, facts.Signal, quality(Number(current.Strength)) + ' · ' + Number(current.Strength) + '%'),
+        UI.setTextString(win, facts.Security, securityName(current.security))
+      ]);
+    };
+    await paint();
+    const actions = await UI.createElement(win, host({ layout: { type: 'column', gap: SPACE.s }, item: { size: { x: width, y: 2 * TOUCH + SPACE.s } } }));
+    await UI.attach(win, page.el, actions);
+    let primaryFeedback, connected = network().connected;
+    const primary = async () => {
+      if (!ok() || latest.working) return;
+      primaryFeedback?.begin().catch(() => {});
+      if (network().connected) await backend.disconnect();
+      else if (!await backend.connect(network()) && network().password) { primaryFeedback?.end().catch(() => {}); openForm(network()); return; }
+      primaryFeedback?.end().catch(() => {});
+      if (latest.error) { flash(latest.error, ORANGE, 4000); shake(actions); }
+    };
+    const [primaryButton, forget] = await children(win, actions, [pill(win, null, connected ? 'Disconnect' : 'Connect', width, primary,
+      connected ? { labelColour: ORANGE, size: TYPE.body } : { colour: ORANGE, labelColour: INK, size: TYPE.body,
+        onFeedback: value => { primaryFeedback = value; } }),
+      pill(win, null, 'Forget network', width, async () => {
+      if (!ok() || latest.working) return;
+      const name = network().name;
+      await backend.forget(network());
+      if (latest.error) { flash(latest.error, ORANGE, 4000); shake(actions); return; }
+      detail = undefined;
+      frame.go(listPageBuild, { title: 'Wi-Fi', direction: -1 });
+      setTimeout(() => flash('Forgot ' + name, ORANGE), 320);
+    })]);
+    await Promise.all([UI.setElementId(win, forget, 'wifi-forget-' + idOf(detail)),
+      ...(connected ? [UI.setElementId(win, primaryButton, 'wifi-disconnect-' + idOf(detail))] : [])]);
+    page.items.push(actions);
+    page.update = async () => {
+      if (!page.alive) return;
+      await paint();
+      // The primary action changes meaning with the connection: rebuild it.
+      if (network().connected !== connected) frame.go(detailPageBuild, { title: network().name, back: true });
+    };
+    return page;
+  };
+
+  const formPageBuild = async () => {
+    const page = await frame.newPage(SPACE.m), width = frame.width;
+    page.hint = 'Enter the password for ' + form.name;
+    const [entryNode, ringNode, viewport, fieldNode, caretNode] = await Promise.all([UI.createElement(win, {
+      renderable: { type: 'box', colour: CARD, cornerRadius: RADIUS.control, cornerResolution: 16, origin: { x: 0.5, y: 0.5 } },
+      item: { size: { x: width, y: FIELD } }, contentAlign: 'fill', inheritAnimation: true,
+      onActivate: () => frame.enqueue(focusField), onHover: controlCursor(win, 'text')
+    }), UI.createElement(win, {
+      renderable: { type: 'box', colour: ORANGE, inset: 2, cornerRadius: RADIUS.control, cornerResolution: 16,
+        aabb: { min: { x: 0, y: 0 }, max: { x: width, y: FIELD } } },
+      item: { size: { x: width, y: FIELD } }, contentAlign: 'fill'
+    }), UI.createElement(win, { clipToBounds: true,
+      item: { size: { x: width - 24, y: FIELD }, margin: { l: 12, r: 12, t: 0, b: 0 } } }), UI.createElement(win, {
+      // Line metrics keep the baseline and left edge fixed as characters are
+      // typed; ink bounds would re-centre on every glyph's ascent and descent.
+      renderable: { type: 'text', string: 'Password', size: TYPE.heading, font: FONT, colour: MUTED, justify: 'left', vAlign: 'center', metricsBasis: 'line' },
+      item: { size: { x: width - 24, y: FIELD } }, contentAlign: { x: 'start', y: 'center' }, contentPositioning: 'raw'
+    }), UI.createElement(win, {
+      renderable: { type: 'box', colour: ORANGE, aabb: { min: { x: 0, y: 0 }, max: { x: 2, y: 20 } } },
+      item: { size: { x: 2, y: FIELD } }, contentAlign: { x: 'start', y: 'center' }, contentPositioning: 'raw'
+    })]);
+    entry = entryNode; focusRing = ringNode; field = fieldNode; caret = caretNode;
+    caretRunning = false;
+    [caretBlink] = await Promise.all([clips(win, caret, { blink: [
+      { time: 0, opacity: 1 }, { time: 0.45, opacity: 0, ease: 'inOutQuad' },
+      { time: 0.9, opacity: 1, ease: 'inOutQuad', looping: true }
+    ] }),
+      UI.attach(win, page.el, entry), UI.setElementId(win, entry, 'wifi-password'),
+      UI.attach(win, entry, focusRing), UI.attach(win, entry, viewport),
+      UI.attach(win, viewport, field), UI.attach(win, viewport, caret),
+      UI.setEnabled(win, focusRing, false), UI.setEnabled(win, caret, false)
+    ]);
+    page.items.push(entry);
+    const helpers = await UI.createElement(win, host({ layout: { type: 'row', gap: SPACE.s }, item: { size: { x: width, y: TOUCH } } }));
+    await UI.attach(win, page.el, helpers);
+    let revealLabel;
+    await children(win, helpers, [pill(win, null, 'Paste', 80, async () => {
+      if (latest.working) return;
+      try { password = (await Compositor.getClipboardText()).replace(/[\x00-\x1f\x7f]/g, '').slice(0, 512); preedit = ''; await frame.enqueue(updateField); punch(entry, 1.02); }
+      catch (_) { flash('Clipboard unavailable', ORANGE); shake(entry); }
+    }), pill(win, null, reveal ? 'Hide' : 'Show', 80, async () => {
+      reveal = !reveal;
+      if (revealLabel) await UI.setTextString(win, revealLabel, reveal ? 'Hide' : 'Show');
+      return frame.enqueue(updateField);
+    }, { onLabel: id => { revealLabel = id; } })]);
+    page.items.push(helpers);
+    // The one primary action on screen: filled and full width.
+    const connectButton = await pill(win, page.el, 'Connect', width, submit, { colour: ORANGE, labelColour: INK, size: TYPE.body,
+      onFeedback: value => { connectFeedback = value; } });
+    page.items.push(connectButton);
+    page.update = async () => {
+      if (!page.alive) return;
+      if (submitted && !latest.working) connectFeedback?.end().catch(() => {});
+      await updateField();
+    };
+    page.dispose = () => { connectFeedback = undefined; };
+    await updateField();
+    return page;
+  };
+
+  // ---- Navigation --------------------------------------------------------
+  const openForm = async (network, restore) => {
+    if (latest.working && !restore) return;
+    detail = undefined;
+    form = network; password = ''; preedit = ''; reveal = false; focused = false; submitted = false;
+    await frame.go(formPageBuild, { title: network.name, direction: 1, back: true });
+  };
+  const closeForm = async () => {
+    if (!form) return;
+    form = undefined; password = ''; preedit = ''; focused = false; submitted = false;
+    keyboard(false);
+    if (caret) await UI.stopAnimation(win, caret).catch(() => {});
+    caretRunning = false; field = entry = focusRing = caret = caretBlink = undefined;
+    backend.clearError();
+    await frame.go(listPageBuild, { title: 'Wi-Fi', direction: -1 });
+  };
+  const openDetail = network => { detail = network; return frame.go(detailPageBuild, { title: network.name, direction: 1, back: true }); };
+  const back = () => {
+    if (form) return closeForm();
+    if (detail) { detail = undefined; return frame.go(listPageBuild, { title: 'Wi-Fi', direction: -1 }); }
+  };
+  const select = async network => {
+    if (latest.working) { flash('Busy — wait for the current change to finish'); return; }
+    if (!network.supported) { flash('This network needs setup on another device', ORANGE); return; }
+    if (network.connected || network.saved) { openDetail(network); return; }
+    if (network.password) { openForm(network); return; }
+    if (!await backend.connect(network) && latest.error) flash(latest.error, ORANGE, 4000);
+  };
+
+  // ---- Backend reactions -------------------------------------------------
+  let previous = latest;
+  backend = wifiNetwork(value => {
+    const before = previous;
+    latest = value; previous = value;
+    frame.enqueue(async () => {
+      await frame.current?.update();
+      if (value.error && value.error !== before.error) {
+        flash(value.error, ORANGE, 4000);
+        if (form && entry) shake(entry);
+      }
+      else frame.refreshHint();
+      // A connection that lands while its password sheet is open returns to
+      // the list with the news, rather than leaving the sheet behind.
+      const joined = value.networks.find(item => item.connected);
+      if (joined && !before.networks.find(item => item.connected && item.key === joined.key)) {
+        if (form && form.key === joined.key) {
+          form = undefined; password = ''; preedit = ''; focused = false; submitted = false; keyboard(false);
+          field = entry = focusRing = caret = caretBlink = undefined;
+          frame.go(listPageBuild, { title: 'Wi-Fi', direction: -1 });
+        }
+        setTimeout(() => flash('Connected to ' + joined.name, ORANGE), 320);
+      }
+    });
+  });
+
+  // ---- Text input --------------------------------------------------------
+  const insert = value => {
+    if (!focused || !form || latest.working) return;
+    preedit = ''; password = (password + value.replace(/[\x00-\x1f\x7f]/g, '')).slice(0, 512); frame.enqueue(updateField);
+  };
+  Event.on('textInput', event => { if (event.id === win) insert(event.text); });
+  Event.on('textRepeat', event => { if (event.id === win) insert(event.text); });
+  Event.on('textInputMethod', event => {
+    if (event.id !== win || event.inputId !== field || !focused || !form || latest.working) return;
+    // This field keeps its cursor at the end. IME deletion lengths are UTF-8
+    // bytes, not JavaScript string indices; commit and deletion form one edit.
+    const characters = Array.from(password);
+    let remaining = Number(event.beforeLength || 0);
+    while (remaining > 0 && characters.length) {
+      const point = characters.pop().codePointAt(0);
+      remaining -= point <= 0x7f ? 1 : point <= 0x7ff ? 2 : point <= 0xffff ? 3 : 4;
+    }
+    password = (characters.join('') + (event.text || '').replace(/[\x00-\x1f\x7f]/g, '')).slice(0, 512);
+    preedit = (event.preedit || '').replace(/[\x00-\x1f\x7f]/g, '').slice(0, 512);
+    frame.enqueue(() => updateField('input_method'));
+  });
+  const keyDown = event => {
+    if (event.id !== win || !focused || !form || latest.working) return;
+    if ([14, 65288].includes(event.key)) { preedit = ''; password = Array.from(password).slice(0, -1).join(''); frame.enqueue(updateField); }
+    if ([28, 96, 65293].includes(event.key)) submit();
+  };
+  Event.on('keyDown', keyDown); Event.on('keyRepeat', event => { if ([14, 65288].includes(event.key)) keyDown(event); });
+
+  await frame.show(listPageBuild, { title: 'Wi-Fi' });
+  // Native promises need the running engine event loop.
+  setTimeout(() => backend.start().catch(() => { latest = { ...latest, loading: false, error: 'NetworkManager is unavailable' }; frame.enqueue(() => frame.current?.update()); }), 0);
+  globalThis.koyaWifi = { backend, select, openForm, closeForm, get window() { return win; }, get password() { return password; },
+    setPassword: value => { password = value; return frame.enqueue(updateField); }, submit };
+  return win;
+};
