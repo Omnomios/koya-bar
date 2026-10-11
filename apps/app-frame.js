@@ -4,16 +4,18 @@ import * as Engine from 'Helix/Engine';
 import * as Event from 'Helix/Event';
 import * as Log from 'Helix/Log';
 import { windowLayout } from './window-layout.js';
+import { popupContains } from './popup-layout.js';
 import { haptic } from './haptics.js';
 import { button, icon, label, text, row, children } from './touch-ui.js';
 import { surfaceCursor } from './cursor.js';
 import { CREAM, ORANGE, MUTED, CLEAR, POPOVER, alpha, BAR_HEIGHT, NAV_HEIGHT, GUTTER, SPACE, RADIUS, TYPE, HEADER_HEIGHT, TOUCH } from './theme.js';
 
-// The shared frame for Koya's apps (Settings, Wi-Fi): a centred overlay on
-// the focused monitor, like the application picker, with a persistent
-// header (back, title, close), one
-// status line, a stage on which pages slide, and a page marker. The chrome
-// never rebuilds; it reacts. Apps supply pages and decide where they lead.
+// The shared frame for Koya's apps (Settings, Wi-Fi): a panel centred on the
+// focused monitor, like the application picker, with a persistent header
+// (back, title, close), one status line, a stage on which pages slide, and a
+// page marker. The overlay covers the output so a click outside the panel
+// closes it. The chrome never rebuilds; it reacts. Apps supply pages and
+// decide where they lead.
 export const glyph = name => '/rom/assets/launcher/' + name + '.png';
 export const STATUS = 24;
 
@@ -23,15 +25,16 @@ export async function appFrame({ title: initialTitle, namespace, name = initialT
   const displays = await Compositor.listDisplays();
   const display = displays.find(item => item.focused) || displays[0];
   if (!display) throw new Error('No display available');
-  const requested = { x: Math.min(560, Number(display.logical_width || display.width) - 40),
-    y: Math.min(600, Number(display.logical_height || display.height) - BAR_HEIGHT - NAV_HEIGHT - 60) };
-  const win = await Compositor.createWindow({ role: 'overlay', anchor: 'center', size: requested, exclusiveZone: -1,
+  const panelFor = screen => ({ x: Math.min(560, screen.x - 40), y: Math.min(600, screen.y - BAR_HEIGHT - NAV_HEIGHT - 60) });
+  const placeFor = (screen, panel) => ({ x: Math.round((screen.x - panel.x) / 2), y: Math.round((screen.y - panel.y) / 2) });
+  let screen = { x: Number(display.logical_width || display.width), y: Number(display.logical_height || display.height) };
+  const win = await Compositor.createWindow({ role: 'overlay', anchor: 'top-left', size: screen, exclusiveZone: -1,
     display: display.display, namespace, msaaSamples: 1, keyboardInteractivity: 'exclusive',
     acceptPointerEvents: true, transparent: true });
-  const [info] = await Promise.all([Compositor.getWindowInfo(win),
-    Compositor.setWindowRenderingEnabled(win, false), Compositor.setClearColor(win, 0, 0, 0, 0)]);
-  // Before the first configure, window info can report the whole output.
-  const size = { x: info.width, y: Math.min(info.height, requested.y) };
+  await Promise.all([Compositor.setWindowRenderingEnabled(win, false), Compositor.setClearColor(win, 0, 0, 0, 0)]);
+  // `size` is the panel's; pages and chrome lay out inside it.
+  const size = panelFor(screen);
+  let place = placeFor(screen, size);
   const metrics = () => ({ width: size.x - 2 * GUTTER, stageHeight: size.y - SPACE.s - HEADER_HEIGHT - STATUS });
 
   // ---- Motion ------------------------------------------------------------
@@ -70,8 +73,12 @@ export async function appFrame({ title: initialTitle, namespace, name = initialT
 
   // ---- Chrome ------------------------------------------------------------
   const fill = { x: 'auto', y: 'auto' };
-  const [root, wall, shell, header, statusRow, stage, pagerBar, backButton, title, closeButton, status, prevButton, dotRow, nextButton] = await Promise.all([
-    UI.createElement(win, { layout: { type: 'none' }, item: { size: fill }, onHover: surfaceCursor(win) }),
+  const [backdrop, root, wall, shell, header, statusRow, stage, pagerBar, backButton, title, closeButton, status, prevButton, dotRow, nextButton] = await Promise.all([
+    // Transparent, output-sized: a click that lands outside the panel closes.
+    UI.createElement(win, { layout: { type: 'none' }, item: { size: fill }, onHover: surfaceCursor(win),
+      onActivate: event => { if (!popupContains(event.local, place, size)) close(); } }),
+    UI.createElement(win, { layout: { type: 'none' }, item: { position: place, size: { ...size } }, onHover: surfaceCursor(win),
+      inputOptions: { blockInput: true } }),
     UI.createElement(win, { renderable: { type: 'box', colour: POPOVER, cornerRadius: RADIUS.surface, cornerResolution: 16 }, item: { size: fill }, contentAlign: 'fill' }),
     UI.createElement(win, host({ layout: { type: 'column' }, item: { size: fill } })),
     UI.createElement(win, { layout: { type: 'row', alignItems: 'center', padding: { l: GUTTER - 12, r: GUTTER, t: SPACE.s, b: 0 } },
@@ -92,12 +99,12 @@ export async function appFrame({ title: initialTitle, namespace, name = initialT
   ]);
   // Enqueue attachments in visual order, independent of build completion order.
   await Promise.all([
-    UI.attach(win, root, wall), UI.attach(win, root, shell), UI.attach(win, root, pagerBar),
+    UI.attach(win, backdrop, root), UI.attach(win, root, wall), UI.attach(win, root, shell), UI.attach(win, root, pagerBar),
     UI.attach(win, shell, header), UI.attach(win, shell, statusRow), UI.attach(win, shell, stage),
     UI.attach(win, header, backButton), UI.attach(win, header, title), UI.attach(win, header, closeButton),
     UI.attach(win, statusRow, status),
     UI.attach(win, pagerBar, prevButton), UI.attach(win, pagerBar, dotRow), UI.attach(win, pagerBar, nextButton),
-    UI.setElementId(win, backButton, 'app-back'), UI.setGrow(win, title, 1), UI.attachRoot(win, root)
+    UI.setElementId(win, backButton, 'app-back'), UI.setGrow(win, title, 1), UI.attachRoot(win, backdrop)
   ]);
   let pagerState;
   // Arrows dim through wrappers; button press clips keep their own opacity.
@@ -276,6 +283,24 @@ export async function appFrame({ title: initialTitle, namespace, name = initialT
   // Quit straight away: Hyprland animates closing windows from their last
   // frame. Fading our own content first left only the window's clear colour,
   // which showed as a flat green frame before the window disappeared.
+  // Step aside for a normal window the app opens, such as the portal file
+  // chooser: overlays stack above every window, and this one holds exclusive
+  // keyboard focus. Hide (a disabled tree is not drawn, leaving the surface
+  // transparent) and release input until resume(). Opacity would not reach
+  // the children, which do not inherit the root's animation.
+  let suspended = false;
+  const suspend = async () => {
+    if (suspended || closing) return;
+    suspended = true;
+    await Promise.all([Compositor.setPointerEvents(win, false), Compositor.setKeyboardInteractivity(win, 'none')]);
+    await UI.setEnabled(win, backdrop, false);
+  };
+  const resume = async () => {
+    if (!suspended || closing) return;
+    suspended = false;
+    await UI.setEnabled(win, backdrop, true);
+    await Promise.all([Compositor.setPointerEvents(win, true), Compositor.setKeyboardInteractivity(win, 'exclusive')]);
+  };
   const close = () => {
     if (closing) return;
     closing = true;
@@ -288,11 +313,14 @@ export async function appFrame({ title: initialTitle, namespace, name = initialT
   });
 
   windowLayout(win, next => enqueue(async () => {
-    if (next.x === size.x && next.y === size.y) return;
+    screen = next;
+    const panel = panelFor(screen), nextPlace = placeFor(screen, panel);
+    if (panel.x === size.x && panel.y === size.y && nextPlace.x === place.x && nextPlace.y === place.y) return;
     await Compositor.setWindowRenderingEnabled(win, false);
     try {
-      Object.assign(size, next);
-      await UI.setLayoutPosition(win, pagerBar, { x: 0, y: size.y - GUTTER - TOUCH });
+      Object.assign(size, panel); place = nextPlace;
+      await Promise.all([UI.setLayoutSize(win, root, { ...size }), UI.setLayoutPosition(win, root, place),
+        UI.setLayoutPosition(win, pagerBar, { x: 0, y: size.y - GUTTER - TOUCH })]);
       // Rotation is a relayout, so replace the page in the same frame rather
       // than replaying navigation with overlapping old and new pages.
       if (factory && current) await show(factory.build, { title: factory.title, back: factory.back, animate: false, dim: current.dim });
@@ -306,11 +334,11 @@ export async function appFrame({ title: initialTitle, namespace, name = initialT
   await Compositor.setWindowRenderingEnabled(win, true);
 
   return {
-    // `root` is layout-less and covers the window: pages can dock to it.
-    win, size, wall, root,
+    // `root` is the layout-less panel: pages can dock to it.
+    win, size, wall, root, display,
     get width() { return metrics().width; }, get stageHeight() { return metrics().stageHeight; },
     get current() { return current; }, get closing() { return closing; }, get settled() { return queue; },
-    play, hidden, punch, shake, rise, host, enqueue,
+    play, hidden, punch, shake, rise, host, enqueue, suspend, resume,
     setStatus, flash, showHint, refreshHint, setTitle,
     chevron, navigate, section, newPage, live, show, go, setDim, close, syncPager
   };

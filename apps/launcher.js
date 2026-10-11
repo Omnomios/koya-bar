@@ -11,6 +11,7 @@ import { LauncherModel } from './launcher-model.js';
 import { clips } from './motion.js';
 import { icon, label, row, children } from './touch-ui.js';
 import { surfaceCursor, controlCursor } from './cursor.js';
+import { popupContains } from './popup-layout.js';
 import { FONT, CREAM, ORANGE, CLEAR, TONAL, MUTED, POPOVER, SPACE, RADIUS, TYPE } from './theme.js';
 
 const PAD = SPACE.m, FIELD = 40;
@@ -34,13 +35,19 @@ async function build() {
   const ROW = 44, inner = width - PAD * 2, FOOTER = 24;
   const capacity = Math.max(1, Math.min(9, Math.floor((Number(display.logical_height || display.height) - 160) / ROW)));
   const height = PAD * 2 + FIELD + SPACE.s * 2 + capacity * ROW + FOOTER;
-  const win = await Compositor.createWindow({ role: 'overlay', anchor: 'center', size: { x: width, y: height },
+  // The overlay covers the output so a click outside the picker closes it.
+  const screen = { x: Number(display.logical_width || display.width), y: Number(display.logical_height || display.height) };
+  const place = { x: Math.round((screen.x - width) / 2), y: Math.round((screen.y - height) / 2) };
+  const win = await Compositor.createWindow({ role: 'overlay', anchor: 'top-left', size: screen,
     exclusiveZone: -1, display: display.display, namespace: 'koya-launcher', msaaSamples: 1,
     keyboardInteractivity: 'exclusive', acceptPointerEvents: true, transparent: true });
-  const [root, field, queryLabel, caret, list, footer] = await Promise.all([
+  const [backdrop, root, field, queryLabel, caret, list, footer] = await Promise.all([
+    UI.createElement(win, { layout: { type: 'none' }, item: { size: { x: 'auto', y: 'auto' } }, onHover: surfaceCursor(win),
+      onActivate: event => { if (!launching && !popupContains(event.local, place, { x: width, y: height })) Engine.quit(); } }),
     UI.createElement(win, { id: 'launcher-root', renderable: { type: 'box', colour: POPOVER, cornerRadius: RADIUS.surface, cornerResolution: 16 },
       layout: { type: 'column', gap: SPACE.s, padding: { l: PAD, r: PAD, t: PAD, b: PAD } },
-      item: { size: { x: width, y: height } }, contentAlign: 'fill', onHover: surfaceCursor(win) }),
+      item: { position: place, size: { x: width, y: height } }, contentAlign: 'fill', onHover: surfaceCursor(win),
+      inputOptions: { blockInput: true } }),
     UI.createElement(win, { renderable: { type: 'box', colour: TONAL, cornerRadius: RADIUS.control, cornerResolution: 16 },
       layout: { type: 'none' }, item: { size: { x: inner, y: FIELD } }, contentAlign: 'fill', clipToBounds: true,
       onHover: controlCursor(win, 'text') }),
@@ -57,7 +64,7 @@ async function build() {
     clips(win, caret, { blink: [{ time: 0, opacity: 1 }, { time: 0.5, opacity: 1 },
       { time: 0.51, opacity: 0 }, { time: 1, opacity: 0 }, { time: 1.01, opacity: 1, looping: true }] }),
     UI.attach(win, root, field), UI.attach(win, root, list), UI.attach(win, root, footer),
-    UI.attach(win, field, queryLabel), UI.attach(win, field, caret), UI.attachRoot(win, root)
+    UI.attach(win, field, queryLabel), UI.attach(win, field, caret), UI.attach(win, backdrop, root), UI.attachRoot(win, backdrop)
   ]);
   await blink.play('blink');
   const model = new LauncherModel();

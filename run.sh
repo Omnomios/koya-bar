@@ -8,6 +8,11 @@ if [[ ${1:-} == --app ]]; then
   shift 2
 fi
 export KOYA_DESKTOP_ROOT=$root
+# Development builds need the standard controls from the matching source tree.
+if [[ -z ${KOYA_ASSET_DIR:-} && -f $root/../helix/koya-base/assets/std/koya-controls.js ]]; then
+  export KOYA_ASSET_DIR
+  KOYA_ASSET_DIR=$(realpath -- "$root/../helix/koya-base/assets")
+fi
 binary=${KOYA_BIN:-koya}
 export KOYA_BIN
 KOYA_BIN=$(command -v -- "$binary") || { printf 'Set KOYA_BIN to an installed Koya executable.\n' >&2; exit 1; }

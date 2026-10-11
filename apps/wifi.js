@@ -1,13 +1,12 @@
 import * as UI from 'Helix/UserInterface';
 import * as Compositor from 'Koya/Compositor';
-import * as Event from 'Helix/Event';
 import * as Log from 'Helix/Log';
 import { appFrame } from './app-frame.js';
 import { wifiNetwork } from './wifi-network.js';
 import { icon, text, label, pill, toggle, throbber, children } from './touch-ui.js';
 import { controlCursor } from './cursor.js';
-import { clips } from './motion.js';
-import { FONT, CREAM, ORANGE, INK, CARD, MUTED, GUTTER, SPACE, RADIUS, TYPE, TOUCH, ROW } from './theme.js';
+import { passwordInput } from './password-input.js';
+import { CREAM, ORANGE, INK, CARD, MUTED, GUTTER, SPACE, RADIUS, TYPE, TOUCH, ROW } from './theme.js';
 
 const SLOT = 24, FIELD = 44;
 const idOf = network => network.path.split('/').pop();
@@ -20,64 +19,33 @@ const statusOf = network => network.connected ? 'Connected' : network.saved ? 'S
   : network.security === 'owe' ? 'Encrypted' : !network.supported ? 'Requires advanced network settings' : 'Password required';
 
 export default async (options = {}) => {
-  let latest = { networks: [], loading: true }, form, detail, password = '', preedit = '', reveal = false, focused = false, submitted = false;
-  let field, entry, focusRing, caret, caretBlink, caretRunning = false, listPage = 0, connectFeedback;
+  let latest = { networks: [], loading: true }, form, detail, password = '', reveal = false, submitted = false;
+  let input, entry, listPage = 0, connectFeedback;
   let backend;
   const frame = await appFrame({ title: 'Wi-Fi', namespace: 'koya-wifi', name: 'Wi-Fi',
     hint: () => latest.loading ? 'Finding networks…' : latest.working && latest.message ? latest.message
       : latest.hardware === false ? 'Wi-Fi is blocked by the device' : latest.enabled === false && !form && !detail ? 'Wi-Fi is off' : '',
     onBack: () => back(),
-    onClose: () => { backend?.dispose(); keyboard(false); } });
+    onClose: () => { backend?.dispose(); input?.destroy(); } });
   const { win, play, hidden, punch, shake, flash, host } = frame;
 
-  // ---- Password field and desktop input method --------------------------
-  const keyboard = async (visible, newFocus = false, changeCause = 'other') => {
-    if (options.keyboard === false) return;
-    try {
-      await Compositor.setTextInput(win, visible ? {
-        enabled: true, newFocus, inputId: field, cursorElement: field, changeCause,
-        contentPurpose: 8, contentHint: 64 | 128
-        // Passwords stay local: never provide surroundingText to input methods.
-      } : { enabled: false });
-    } catch (error) { Log.error('Wi-Fi text input: ' + error); }
-  };
-  const updateField = async (changeCause = 'other') => {
-    if (!field) return;
-    const value = password + preedit;
-    const display = value ? reveal ? value : '•'.repeat(Array.from(value).length) : focused ? '' : 'Password';
-    await Promise.all([UI.setTextString(win, field, display),
-      UI.setTextColour(win, field, value || focused ? CREAM : MUTED), UI.setEnabled(win, focusRing, focused)]);
-    const position = await UI.getTextCaretPosition(win, field, focused ? Array.from(display).length : 0);
-    const x = Number(position?.x || 0), scroll = Math.max(0, x - (frame.width - 28));
-    const blinking = focused && !!form && !latest.working;
-    await Promise.all([UI.setPosition(win, field, { x: -scroll, y: 0 }),
-      UI.setPosition(win, caret, { x: x - scroll, y: 0 }), UI.setEnabled(win, caret, blinking)]);
-    if (blinking !== caretRunning) {
-      caretRunning = blinking;
-      if (blinking) await caretBlink.play('blink');
-      else await UI.stopAnimation(win, caret);
-    }
-    // Keep desktop input-method state in step with the editable field.
-    keyboard(blinking, false, changeCause);
-  };
-  const focusField = async () => {
-    if (!form || latest.working) return;
-    const newFocus = !focused;
-    focused = true;
-    await updateField();
-    if (newFocus) { keyboard(true, true); punch(entry, 1.02); }
+  // Koya's standard InputText owns editing, composition, focus and caret.
+  const updateField = async () => {
+    if (!input) return;
+    await Promise.all([...(input.getValue() !== password ? [input.setValue(password)] : []), input.setRevealed(reveal), input.setDisabled(!!latest.working)]);
   };
   const submit = async () => {
     if (!form || latest.working) return;
     const network = form, secret = password;
-    submitted = true; focused = false;
-    await frame.enqueue(updateField);
+    submitted = true;
+    await input?.setDisabled(true);
     connectFeedback?.begin().catch(() => {});
     const accepted = await backend.connect(network, secret);
     if (form !== network) return;
     if (!accepted) {
       connectFeedback?.end().catch(() => {});
       await frame.enqueue(updateField);
+      await input?.focus();
       if (latest.error) { flash(latest.error, ORANGE, 4000); shake(entry); }
     }
   };
@@ -288,42 +256,18 @@ export default async (options = {}) => {
   const formPageBuild = async () => {
     const page = await frame.newPage(SPACE.m), width = frame.width;
     page.hint = 'Enter the password for ' + form.name;
-    const [entryNode, ringNode, viewport, fieldNode, caretNode] = await Promise.all([UI.createElement(win, {
-      renderable: { type: 'box', colour: CARD, cornerRadius: RADIUS.control, cornerResolution: 16, origin: { x: 0.5, y: 0.5 } },
-      item: { size: { x: width, y: FIELD } }, contentAlign: 'fill', inheritAnimation: true,
-      onActivate: () => frame.enqueue(focusField), onHover: controlCursor(win, 'text')
-    }), UI.createElement(win, {
-      renderable: { type: 'box', colour: ORANGE, inset: 2, cornerRadius: RADIUS.control, cornerResolution: 16,
-        aabb: { min: { x: 0, y: 0 }, max: { x: width, y: FIELD } } },
-      item: { size: { x: width, y: FIELD } }, contentAlign: 'fill'
-    }), UI.createElement(win, { clipToBounds: true,
-      item: { size: { x: width - 24, y: FIELD }, margin: { l: 12, r: 12, t: 0, b: 0 } } }), UI.createElement(win, {
-      // Line metrics keep the baseline and left edge fixed as characters are
-      // typed; ink bounds would re-centre on every glyph's ascent and descent.
-      renderable: { type: 'text', string: 'Password', size: TYPE.heading, font: FONT, colour: MUTED, justify: 'left', vAlign: 'center', metricsBasis: 'line' },
-      item: { size: { x: width - 24, y: FIELD } }, contentAlign: { x: 'start', y: 'center' }, contentPositioning: 'raw'
-    }), UI.createElement(win, {
-      renderable: { type: 'box', colour: ORANGE, aabb: { min: { x: 0, y: 0 }, max: { x: 2, y: 20 } } },
-      item: { size: { x: 2, y: FIELD } }, contentAlign: { x: 'start', y: 'center' }, contentPositioning: 'raw'
-    })]);
-    entry = entryNode; focusRing = ringNode; field = fieldNode; caret = caretNode;
-    caretRunning = false;
-    [caretBlink] = await Promise.all([clips(win, caret, { blink: [
-      { time: 0, opacity: 1 }, { time: 0.45, opacity: 0, ease: 'inOutQuad' },
-      { time: 0.9, opacity: 1, ease: 'inOutQuad', looping: true }
-    ] }),
-      UI.attach(win, page.el, entry), UI.setElementId(win, entry, 'wifi-password'),
-      UI.attach(win, entry, focusRing), UI.attach(win, entry, viewport),
-      UI.attach(win, viewport, field), UI.attach(win, viewport, caret),
-      UI.setEnabled(win, focusRing, false), UI.setEnabled(win, caret, false)
-    ]);
+    const control = await passwordInput(win, { width, height: FIELD, size: TYPE.heading,
+      id: 'wifi-password', textId: 'wifi-password-text', onSubmit: submit,
+      onInput: value => { password = value; }, onFocus: () => punch(control.master.id, 1.02) });
+    input = control; entry = control.master.id;
+    await UI.attach(win, page.el, entry);
     page.items.push(entry);
     const helpers = await UI.createElement(win, host({ layout: { type: 'row', gap: SPACE.s }, item: { size: { x: width, y: TOUCH } } }));
     await UI.attach(win, page.el, helpers);
     let revealLabel;
     await children(win, helpers, [pill(win, null, 'Paste', 80, async () => {
       if (latest.working) return;
-      try { password = (await Compositor.getClipboardText()).replace(/[\x00-\x1f\x7f]/g, '').slice(0, 512); preedit = ''; await frame.enqueue(updateField); punch(entry, 1.02); }
+      try { password = (await Compositor.getClipboardText()).replace(/[\x00-\x1f\x7f]/g, '').slice(0, 512); await frame.enqueue(updateField); await input?.focus(); punch(entry, 1.02); }
       catch (_) { flash('Clipboard unavailable', ORANGE); shake(entry); }
     }), pill(win, null, reveal ? 'Hide' : 'Show', 80, async () => {
       reveal = !reveal;
@@ -340,7 +284,7 @@ export default async (options = {}) => {
       if (submitted && !latest.working) connectFeedback?.end().catch(() => {});
       await updateField();
     };
-    page.dispose = () => { connectFeedback = undefined; };
+    page.dispose = () => { connectFeedback = undefined; if (input === control) input = entry = undefined; control.destroy().catch(() => {}); };
     await updateField();
     return page;
   };
@@ -349,15 +293,14 @@ export default async (options = {}) => {
   const openForm = async (network, restore) => {
     if (latest.working && !restore) return;
     detail = undefined;
-    form = network; password = ''; preedit = ''; reveal = false; focused = false; submitted = false;
+    form = network; password = ''; reveal = false; submitted = false;
     await frame.go(formPageBuild, { title: network.name, direction: 1, back: true });
+    await input?.focus();
   };
   const closeForm = async () => {
     if (!form) return;
-    form = undefined; password = ''; preedit = ''; focused = false; submitted = false;
-    keyboard(false);
-    if (caret) await UI.stopAnimation(win, caret).catch(() => {});
-    caretRunning = false; field = entry = focusRing = caret = caretBlink = undefined;
+    form = undefined; password = ''; submitted = false;
+    await input?.destroy(); input = entry = undefined;
     backend.clearError();
     await frame.go(listPageBuild, { title: 'Wi-Fi', direction: -1 });
   };
@@ -391,42 +334,14 @@ export default async (options = {}) => {
       const joined = value.networks.find(item => item.connected);
       if (joined && !before.networks.find(item => item.connected && item.key === joined.key)) {
         if (form && form.key === joined.key) {
-          form = undefined; password = ''; preedit = ''; focused = false; submitted = false; keyboard(false);
-          field = entry = focusRing = caret = caretBlink = undefined;
+          form = undefined; password = ''; submitted = false;
+          await input?.destroy(); input = entry = undefined;
           frame.go(listPageBuild, { title: 'Wi-Fi', direction: -1 });
         }
         setTimeout(() => flash('Connected to ' + joined.name, ORANGE), 320);
       }
     });
   });
-
-  // ---- Text input --------------------------------------------------------
-  const insert = value => {
-    if (!focused || !form || latest.working) return;
-    preedit = ''; password = (password + value.replace(/[\x00-\x1f\x7f]/g, '')).slice(0, 512); frame.enqueue(updateField);
-  };
-  Event.on('textInput', event => { if (event.id === win) insert(event.text); });
-  Event.on('textRepeat', event => { if (event.id === win) insert(event.text); });
-  Event.on('textInputMethod', event => {
-    if (event.id !== win || event.inputId !== field || !focused || !form || latest.working) return;
-    // This field keeps its cursor at the end. IME deletion lengths are UTF-8
-    // bytes, not JavaScript string indices; commit and deletion form one edit.
-    const characters = Array.from(password);
-    let remaining = Number(event.beforeLength || 0);
-    while (remaining > 0 && characters.length) {
-      const point = characters.pop().codePointAt(0);
-      remaining -= point <= 0x7f ? 1 : point <= 0x7ff ? 2 : point <= 0xffff ? 3 : 4;
-    }
-    password = (characters.join('') + (event.text || '').replace(/[\x00-\x1f\x7f]/g, '')).slice(0, 512);
-    preedit = (event.preedit || '').replace(/[\x00-\x1f\x7f]/g, '').slice(0, 512);
-    frame.enqueue(() => updateField('input_method'));
-  });
-  const keyDown = event => {
-    if (event.id !== win || !focused || !form || latest.working) return;
-    if ([14, 65288].includes(event.key)) { preedit = ''; password = Array.from(password).slice(0, -1).join(''); frame.enqueue(updateField); }
-    if ([28, 96, 65293].includes(event.key)) submit();
-  };
-  Event.on('keyDown', keyDown); Event.on('keyRepeat', event => { if ([14, 65288].includes(event.key)) keyDown(event); });
 
   await frame.show(listPageBuild, { title: 'Wi-Fi' });
   // Native promises need the running engine event loop.

@@ -6,7 +6,16 @@ export const WALLPAPERS = [
   { id: 'terracotta-dunes', name: 'Terracotta dunes', texture: '/rom/assets/wallpapers/terracotta-dunes.png', size: { x: 863, y: 1823 } },
   { id: 'violet-dusk', name: 'Violet dusk', texture: '/rom/assets/wallpapers/violet-dusk.png', size: { x: 863, y: 1823 } }
 ];
-export const wallpaperFor = id => WALLPAPERS.find(item => item.id === id) || WALLPAPERS[0];
+// Imported wallpapers ('user:<file>') come from the desktop module at run
+// time; see user-wallpapers.js. Built-ins preview from their full texture.
+let user = [];
+export const setUserWallpapers = list => { user = Array.isArray(list) ? list : []; };
+export const allWallpapers = () => [...WALLPAPERS, ...user];
+export const isUserWallpaper = id => typeof id === 'string' && /^user:[^/.][^/]*$/.test(id);
+export const wallpaperFor = id => allWallpapers().find(item => item.id === id) || WALLPAPERS[0];
+export const knownWallpaper = id => allWallpapers().some(item => item.id === id);
+export const previewOf = wallpaper => wallpaper.thumbnail
+  ? { ...wallpaper, texture: wallpaper.thumbnail, size: wallpaper.thumbnailSize || wallpaper.size } : wallpaper;
 
 // Centre-crop to fill, preserving the artwork's aspect ratio on any display.
 export function wallpaperFrame(wallpaper, size, colour = [1, 1, 1, 1]) {

@@ -9,7 +9,7 @@ import { wallpaperFrame, WALLPAPERS } from '../apps/wallpapers.js';
 import { validPassword, connectionSettings, networks } from '../apps/wifi-model.js';
 import { filterApplications, LauncherModel } from '../apps/launcher-model.js';
 import { createLockController } from '../apps/lock-model.js';
-import { networkSummary } from '../apps/network-model.js';
+import { networkSummary, networkView } from '../apps/network-model.js';
 import { notificationHeight, notificationGeometry, notificationPages, MAX_VISIBLE } from '../apps/notifications-layout.js';
 import { pressFeedback, volumeInput } from '../apps/input-model.js';
 import { popupContains } from '../apps/popup-layout.js';
@@ -91,8 +91,8 @@ assert.equal(volumePopupPosition({ x: 1920, y: 1080 }, { x: 1900, y: 0, width: 3
 assert.equal(volumePopupPosition({ x: 1920, y: 1080 }, { x: 0, y: 0, width: 36, height: 36 }).x, 8);
 for (const size of [{ x: 1920, y: 1080 }, { x: 2560, y: 1440 }, { x: 390, y: 844 }]) {
   const geometry = notificationGeometry(size);
-  assert.equal(geometry.width, 300);
-  assert.equal(geometry.x, size.x - 300 - 10);
+  assert.equal(geometry.width, 360);
+  assert.equal(geometry.x, size.x - 360 - 10);
   assert.equal(geometry.y, BAR_HEIGHT + 10);
   assert.ok(geometry.y + geometry.height <= size.y - 10);
 }
@@ -186,6 +186,10 @@ await assert.rejects(failing.request('SetSetting', ['Wallpaper', 'tidal-blue']))
 assert.equal(failing.snapshot().Wallpaper, WALLPAPERS[0].id);
 assert.throws(() => settingValue('VolumeStepPercent', '5.5'));
 assert.throws(() => settingValue('VolumeStepPercent', ''));
+// Imported wallpapers are plain file names in the data directory.
+assert.equal(settingValue('Wallpaper', 'user:beach.jpg'), 'user:beach.jpg');
+for (const unsafe of ['user:', 'user:../settings.json', 'user:a/b.png', 'user:.hidden', 'beach.jpg'])
+  assert.throws(() => settingValue('Wallpaper', unsafe), unsafe);
 assert.deepEqual(readSettings({ VolumeIndicatorEnabled: false, VolumeMaxPercent: 75 }), defaults);
 assert.deepEqual(readSettings({ ClockTimeFormat: 'wrong', ClockShowDate: 'no', ClockShowSeconds: 1 }), defaults);
 assert.equal(settingValue('ClockShowDate', 'false'), false);
@@ -267,6 +271,19 @@ assert.equal(networkSummary({ ...wifiConnection, NetworkState: 'offline' }).rows
 assert.equal(networkSummary({ NetworkAvailable: false }).status, 'NetworkManager unavailable');
 assert.ok(networkSummary({ ...wifiConnection, NetworkType: 'ethernet' }).rows.some(([name, value]) => name === 'Wi-Fi' && value === 'Koya'));
 assert.ok(!networkSummary({ ...wifiConnection, WifiStrength: -1 }).rows.some(([name]) => name === 'Signal'));
+const wifiView = networkView({ ...wifiConnection, NetworkIPv6: 'fe80::1, 2001:db8::4' });
+assert.equal(wifiView.kind, 'wifi'); assert.equal(wifiView.name, 'Koya'); assert.equal(wifiView.health, 'good');
+assert.equal(wifiView.status, 'Internet available'); assert.equal(wifiView.icon, 'wifi-3');
+assert.deepEqual(wifiView.signal, { percent: 80, label: 'Excellent' });
+assert.deepEqual(wifiView.details.map(item => [item.key, item.value]), [['Interface', 'wlan0'], ['IPv4', '192.0.2.4'], ['IPv6', '2001:db8::4'], ['Security', 'WPA / WPA2']]);
+assert.equal(wifiView.action.primary, false);
+assert.equal(networkView({ ...wifiConnection, NetworkConnectivity: 'portal' }).health, 'warn');
+assert.equal(networkView({ ...wifiConnection, WifiStrength: 20 }).icon, 'wifi-1');
+const offlineView = networkView({ ...wifiConnection, NetworkState: 'offline', WifiState: 'disconnected' });
+assert.equal(offlineView.kind, 'offline'); assert.equal(offlineView.health, 'off'); assert.equal(offlineView.signal, null);
+assert.equal(offlineView.action.label, 'Choose a network'); assert.equal(offlineView.action.primary, true);
+assert.equal(networkView({ ...wifiConnection, NetworkType: 'ethernet' }).icon, 'ethernet');
+assert.equal(networkView({ NetworkAvailable: false }).kind, 'unavailable');
 const networkListeners = new Set(), networkUpdates = [];
 const mockNetworkBus = {
   connect: async () => {}, addMatch: () => {},

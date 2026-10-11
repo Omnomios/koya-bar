@@ -27,6 +27,20 @@ export async function text(win, parent, value, size, width, height, colour = CRE
   return id;
 }
 
+// Pointer cursor plus an optional hover background, restored on leave.
+export function hoverable(win, target, cursor = 'pointer', hover, rest = [0, 0, 0, 0]) {
+  const pointer = controlCursor(win, cursor);
+  let inside = false;
+  return event => {
+    pointer(event);
+    if (!hover || event.source === 'touch') return;
+    const next = event.phase !== 'leave';
+    if (next === inside) return;
+    inside = next;
+    UI.setBoxColour(win, target(), next ? hover : rest).catch(() => {});
+  };
+}
+
 // Start-aligned, clipped and word-wrapped: row titles, captions and body copy.
 // Fluid labels inherit their reflow box from the layout bounds.
 export async function label(win, parent, value, size, width, height, colour = CREAM, font = FONT) {
@@ -50,8 +64,15 @@ export async function icon(win, parent, texture, size, width = size, height = si
   return id;
 }
 
+// options.hover is a background shown while a mouse is over the button (or
+// over options.hoverTarget(), a child that carries the background).
+// options.element merges into the element description (for example raw
+// positioning, so the hit area can be taller than the drawn background).
+// options.onFeedback receives { begin, end } for actions that take a while:
+// a throbber turns left of the label (balanced by a spacer on the right, so
+// the label stays centred) and the button holds still until `end`.
 export async function button(win, parent, label, width, height, handler, options = {}) {
-  let motion;
+  let motion, spinner;
   let waiting = false;
   const id = await UI.createElement(win, {
     renderable: { ...(options.renderable || { type: 'box', colour: options.colour || [0,0,0,0], cornerRadius: options.radius ?? RADIUS.control, cornerResolution: 32 }),
@@ -64,38 +85,49 @@ export async function button(win, parent, label, width, height, handler, options
       end: event => { if (!waiting) motion?.play('release'); options.onRelease?.(event); },
       cancel: event => { if (!waiting) motion?.play('settle'); options.onRelease?.(event); }
     }),
-    onActivate: handler, onHover: controlCursor(win, options.cursor || 'pointer')
+    onActivate: handler, onHover: hoverable(win, options.hoverTarget || (() => id), options.cursor || 'pointer', options.hover,
+      options.hoverTarget ? [0, 0, 0, 0] : options.colour || [0, 0, 0, 0]),
+    ...(options.element || {})
   });
   const pose = scale => ({ scale: { x: scale, y: scale } });
-  const bounce = options.feedbackMotion || { squash: 0.95, peak: 1.04, lift: 3 };
   const [feedback] = await Promise.all([
     clips(win, id, {
       press: [{ time: 0.07, ...pose(options.pressScale ?? 0.95), ease: 'outQuad' }],
       release: [{ time: 0.09, ...pose(options.releaseScale ?? 1.02), ease: 'outCubic' }, { time: 0.23, ...pose(1), ease: 'outCubic' }],
-      settle: [{ time: 0.14, ...pose(1), position: { x: 0, y: 0 }, ease: 'outCubic' }],
-      ...(options.onFeedback ? { waiting: [
-        { time: 0, ...pose(1), position: { x: 0, y: 0 } },
-        { time: 0.08, ...pose(bounce.squash), position: { x: 0, y: 2 }, ease: 'outQuad' },
-        { time: 0.23, ...pose(bounce.peak), position: { x: 0, y: -bounce.lift }, ease: 'outCubic' },
-        { time: 0.54, ...pose(1), position: { x: 0, y: 0 }, ease: 'outCubic' },
-        { time: 0.68, ...pose(1), position: { x: 0, y: 0 }, looping: true }
-      ] } : {})
+      settle: [{ time: 0.14, ...pose(1), position: { x: 0, y: 0 }, ease: 'outCubic' }]
     }),
     ...(parent != null ? [UI.attach(win, parent, id)] : []),
     children(win, id, [
       ...(options.icon ? [icon(win, null, options.icon, options.iconSize || 72, width, options.iconSize || 72)
         .then(glyph => { options.onIcon?.(glyph); return glyph; })] : []),
-      ...(label ? [text(win, null, label, options.size || TYPE.body, width, options.labelHeight || 24,
+      ...(label && options.onFeedback ? [busyLabel()] : label ? [text(win, null, label, options.size || TYPE.body, width, options.labelHeight || 24,
         options.labelColour || options.accent || CREAM, options.font)
         .then(labelId => { options.onLabel?.(labelId); return labelId; })] : [])
     ])
   ]);
   motion = feedback;
   options.onFeedback?.({
-    begin: () => { waiting = true; return motion.play('waiting'); },
-    end: () => { waiting = false; return motion.play('settle'); }
+    begin: () => { waiting = true; return Promise.all([motion.play('settle'), spinner?.start()]); },
+    end: () => { waiting = false; return spinner?.stop() ?? Promise.resolve(); }
   });
   return id;
+
+  async function busyLabel() {
+    const SPIN = 14, GAP = 8, lineHeight = options.labelHeight || 24, colour = options.labelColour || options.accent || CREAM;
+    const [line, spin, labelId, spacer] = await Promise.all([
+      UI.createElement(win, { layout: { type: 'row', justifyContent: 'center', alignItems: 'center', gap: GAP }, item: { size: { x: width, y: lineHeight } } }),
+      throbber(win, null, SPIN, colour, lineHeight),
+      text(win, null, label, options.size || TYPE.body, width - 2 * (SPIN + GAP), lineHeight, colour, options.font, 'left'),
+      UI.createElement(win, { item: { size: { x: SPIN, y: lineHeight } } })
+    ]);
+    spinner = spin;
+    await Promise.all([spin.id, labelId, spacer].map(child => UI.attach(win, line, child)));
+    // Fit the label to its text so the row centres label and throbber together.
+    const end = await UI.getTextCaretPosition(win, labelId, Array.from(label).length);
+    await UI.setLayoutSize(win, labelId, { x: Math.ceil(Number(end?.x || 0)) + 2, y: lineHeight });
+    options.onLabel?.(labelId);
+    return line;
+  }
 }
 
 // Every sheet starts with the same header: a title on the left and square

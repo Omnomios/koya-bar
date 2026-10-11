@@ -6,7 +6,15 @@ export const FONT = '/rom/assets/fonts/Inter-Regular.ttf';
 export const FONT_STRONG = '/rom/assets/fonts/Inter-SemiBold.ttf';
 export const WALLPAPER = '/rom/assets/wallpapers/waypaper-current.png';
 export const WALLPAPER_SIZE = { x: 2560, y: 1600 };
-export const BAR_HEIGHT = 34;
+// The top bar floats: a rounded strip `height` tall, `top` below the screen
+// edge and `side` in from the left and right (matching Hyprland's gaps_out,
+// so it lines up with tiled windows). Below it, the windows' own gap is the
+// only space. BAR_HEIGHT is what it reserves.
+export const BAR = { height: 28, top: 2, side: 3 };
+export const BAR_HEIGHT = BAR.top + BAR.height;
+// Explicit "let layout decide" size for item.size: fills a 'none' parent,
+// fills the cross axis or measures the renderable in a flow.
+export const AUTO = { x: 'auto', y: 'auto' };
 export const NAV_HEIGHT = 0;
 
 // Orange and warm cream from the Koya fish, on its deep green background.
@@ -29,6 +37,14 @@ export const SHEET_TINT = [0.15, 0.19, 0.17, 1];
 // wallpaper. Layer surfaces are only blurred when the compositor has a layer
 // rule for them, so the surface stays legible without one.
 export const POPOVER = alpha(INK, 0.95);
+
+// Authored shadows, generated per window at run time (see shadow.js): blur
+// radius (the shadow reaches about twice this past the surface), how far it
+// drops, and its strength. Popovers and panels float high; cards sit low.
+export const SHADOW = {
+  popover: { blur: 8, offset: 6, alpha: 0.55 },
+  card: { blur: 3, offset: 2, alpha: 0.4 }
+};
 
 // One spacing scale. GUTTER is the screen edge inset used by every sheet.
 export const SPACE = { xs: 4, s: 8, m: 12, l: 16, xl: 24 };

@@ -1,22 +1,21 @@
 import * as UI from 'Helix/UserInterface';
 import * as Log from 'Helix/Log';
-import { WALLPAPERS, wallpaperFor, wallpaperFrame } from './wallpapers.js';
+import { WALLPAPERS, wallpaperFor, wallpaperFrame, knownWallpaper, isUserWallpaper } from './wallpapers.js';
+import { loadUserWallpapers } from './user-wallpapers.js';
 
 let selected = WALLPAPERS[0], serial = 0, queue = Promise.resolve();
 const surfaces = new Set();
-const frameIndex = wallpaper => WALLPAPERS.indexOf(wallpaper);
 
-// Share the current artwork across home, lock screen and dimmed sheet backdrops.
-// Predefined frames let each texture retain its own crop without replacing UI nodes.
+// Share the current artwork across the desktop background and lock screen.
+// The catalogue can grow at run time (imported images), so each surface holds
+// one sprite for the current wallpaper and swaps it when the choice changes.
 const artwork = (win, size, colour) => UI.createElement(win, {
-  renderable: { type: 'sprite', texture: selected.texture, frame: frameIndex(selected),
-    frames: WALLPAPERS.map(wallpaper => wallpaperFrame(wallpaper, size, colour)) },
+  renderable: { type: 'sprite', texture: selected.texture, frame: 0, frames: [wallpaperFrame(selected, size, colour)] },
   item: { size }, contentAlign: 'fill'
 });
 
 export async function wallpaperSurface(win, size, colour = [1, 1, 1, 1]) {
-  // Keep the host (and its animation identity) while replacing cropped artwork
-  // when the aspect ratio changes. Sprite frames are immutable in the UI API.
+  // Keep the host (and its animation identity) while replacing the sprite.
   const name = 'wallpaper-surface-' + ++serial;
   const [id, sprite] = await Promise.all([UI.createElement(win, {
     id: name, renderable: { type: 'box', colour: [0, 0, 0, 0] },
@@ -28,27 +27,34 @@ export async function wallpaperSurface(win, size, colour = [1, 1, 1, 1]) {
   return id;
 }
 
+const replace = async (surface, size = surface.size) => {
+  const sprite = await artwork(surface.win, size, surface.colour);
+  await Promise.all([UI.attach(surface.win, surface.id, sprite), UI.destroyElement(surface.win, surface.sprite)]);
+  surface.sprite = sprite;
+};
+
 export function resizeWallpaper(win, id, size) {
   queue = queue.then(async () => {
     const surface = [...surfaces].find(value => value.win === win && value.id === id);
     if (!surface || surface.size.x === size.x && surface.size.y === size.y) return;
-    const sprite = await artwork(win, size, surface.colour);
-    await Promise.all([UI.attach(win, id, sprite), UI.destroyElement(win, surface.sprite), UI.setLayoutSize(win, id, size)]);
-    surface.size = { ...size }; surface.sprite = sprite;
+    await Promise.all([replace(surface, size), UI.setLayoutSize(win, id, size)]);
+    surface.size = { ...size };
   });
   return queue;
 }
 
 export function configureWallpaper(state) {
-  const next = wallpaperFor(state.Wallpaper);
-  if (next === selected) return queue;
-  selected = next;
   queue = queue.then(async () => {
+    // A newly imported wallpaper is not in this process's catalogue yet.
+    if (isUserWallpaper(state.Wallpaper) && !knownWallpaper(state.Wallpaper)) await loadUserWallpapers();
+    const next = wallpaperFor(state.Wallpaper);
+    if (next.id === selected.id && next.texture === selected.texture) return;
+    selected = next;
     await Promise.all([...surfaces].map(async surface => {
       try {
         // Sheets can be destroyed while parked. Drop those bindings safely.
         if (await UI.getElementById(surface.win, surface.name) !== surface.id) { surfaces.delete(surface); return; }
-        await Promise.all([UI.setTexture(surface.win, surface.sprite, next.texture), UI.setSpriteFrame(surface.win, surface.sprite, frameIndex(next))]);
+        await replace(surface);
       } catch (error) {
         surfaces.delete(surface);
         Log.error('Wallpaper surface: ' + error);

@@ -1,5 +1,6 @@
 #include "module.hpp"
 #include "icons.hpp"
+#include "wallpapers.hpp"
 #include <gio/gdesktopappinfo.h>
 #include <memory>
 #include <atomic>
@@ -12,6 +13,7 @@
 struct DesktopModule: NativeModule {
     std::string root;
     std::unique_ptr<Icons> icons;
+    Wallpapers wallpapers;
     GAppInfoMonitor *monitor = nullptr;
     gulong handler = 0;
     guint notification = 0;
@@ -150,8 +152,11 @@ struct DesktopModule: NativeModule {
                 if (ending) return;
                 job = std::move(jobs.front()); jobs.pop_front(); }
             Result result{job.id, {}, {}};
-            if (invalidated.exchange(false)) icons->invalidate();
-            if (job.kind == "applications") result.json = applications();
+            if (icons && invalidated.exchange(false)) icons->invalidate();
+            if (job.kind == "wallpapers") result.json = wallpapers.list();
+            else if (job.kind == "importWallpaper") { std::string error; result.json = wallpapers.import(job.argument, error); if (result.json.empty()) result.error = error; }
+            else if (job.kind == "removeWallpaper") { if (wallpapers.remove(job.argument)) result.json = "true"; else result.error = "Cannot remove wallpaper"; }
+            else if (job.kind == "applications") result.json = applications();
             else if (job.kind == "resolveIcon") {
                 GIcon *icon = g_icon_new_for_string(job.argument.c_str(), nullptr);
                 result.json = quote(icon ? icons->resolve(icon).c_str() : ""); if (icon) g_object_unref(icon);
@@ -187,8 +192,12 @@ struct DesktopModule: NativeModule {
         }), self);
         return JS_UNDEFINED;
     }
+    // Wallpaper jobs need no application state, so they start the worker on
+    // demand in apps that never call start().
     JSValue enqueue(const char *kind, std::string argument = "") {
-        if (!icons) return JS_ThrowInternalError(js, "Desktop module is not started");
+        const bool standalone = g_str_has_suffix(kind, "allpaper") || !strcmp(kind, "wallpapers");
+        if (!icons && !standalone) return JS_ThrowInternalError(js, "Desktop module is not started");
+        if (!worker.joinable()) { ending = false; worker = std::thread([this] { run(); }); }
         if (promises.size() >= 128) return JS_ThrowInternalError(js, "Too many pending desktop requests");
         JSValue callbacks[2]; JSValue promise = JS_NewPromiseCapability(js, callbacks);
         if (JS_IsException(promise)) return promise;
@@ -206,6 +215,9 @@ extern "C" HELIX_PLUGIN_EXPORT int helix_plugin_integrate(JSContext *ctx, const 
         }}, {"loadPreferences", DesktopModule::load_preferences}, {"savePreferences", DesktopModule::save_preferences},
         {"start", DesktopModule::start}, {"applications", [](NativeModule *base, int, JSValueConst *) { return static_cast<DesktopModule *>(base)->enqueue("applications"); }},
         {"launch", [](NativeModule *base, int argc, JSValueConst *argv) { if (argc != 1 || !JS_IsString(argv[0])) return JS_ThrowTypeError(base->js, "launch expects a desktop entry ID"); return static_cast<DesktopModule *>(base)->enqueue("launch", NativeModule::string(base->js, argv[0])); }},
+        {"wallpapers", [](NativeModule *base, int, JSValueConst *) { return static_cast<DesktopModule *>(base)->enqueue("wallpapers"); }},
+        {"importWallpaper", [](NativeModule *base, int argc, JSValueConst *argv) { if (argc != 1 || !JS_IsString(argv[0])) return JS_ThrowTypeError(base->js, "importWallpaper expects a path or file URI"); return static_cast<DesktopModule *>(base)->enqueue("importWallpaper", NativeModule::string(base->js, argv[0])); }},
+        {"removeWallpaper", [](NativeModule *base, int argc, JSValueConst *argv) { if (argc != 1 || !JS_IsString(argv[0])) return JS_ThrowTypeError(base->js, "removeWallpaper expects a wallpaper ID"); return static_cast<DesktopModule *>(base)->enqueue("removeWallpaper", NativeModule::string(base->js, argv[0])); }},
         {"resolveIcon", [](NativeModule *base, int argc, JSValueConst *argv) { if (argc != 1) return JS_ThrowTypeError(base->js, "resolveIcon expects a description"); return static_cast<DesktopModule *>(base)->enqueue("resolveIcon", NativeModule::string(base->js, argv[0])); }}};
     if (self->integrate(name, host, out)) return 0;
     delete self; return 1;

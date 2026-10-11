@@ -59,6 +59,14 @@ layerrule = blur, ^koya-
 layerrule = ignorezero, ^koya-
 ```
 
+Settings adds wallpapers through the desktop portal's file chooser. Overlays
+stack above every window, so Settings hides while the chooser is open; float
+the chooser so it opens as a dialog rather than a tile:
+
+```
+windowrule = float, class:^(xdg-desktop-portal-gtk)$
+```
+
 NetworkManager supplies network status and Wi-Fi configuration; UPower supplies
 battery status. The battery indicator is hidden on desktops without a battery.
 PulseAudio or PipeWire's PulseAudio compatibility server and `pactl` supply
@@ -117,8 +125,10 @@ immediately and are saved atomically in
 
 The top bar shows local time followed by the local date in ISO `YYYY-MM-DD`
 format. Settings → Date & time offers 24/12-hour time, show date and show
-seconds. Defaults are 24-hour time, date visible and seconds hidden; changes
-apply immediately on every output and use the same settings file.
+seconds. Defaults are 24-hour time, date visible and seconds hidden. The top bar,
+Settings previews and lock screen use the same format and local calendar on every
+output. Changes apply immediately to the bar; the independent lock app reads the
+saved settings on startup and refreshes them while locked.
 
 The top bar's speaker reflects the default audio output's volume and mute
 status, including changes made with keyboard shortcuts. Click it to open a
@@ -169,7 +179,12 @@ Keep the existing OpenSSH agent service/socket enabled. Ensure shell startup
 files retain the proxy address rather than resetting it to the upstream socket.
 After changing session configuration, restart Koyabar and open a new terminal
 with the proxy `SSH_AUTH_SOCK`. Existing applications retain their old environment.
-The shell must be running to unlock new keys.
+All agent-backed requests through the proxy, including requests for already
+loaded keys, require Koyabar to be running. Closing the shell stops the proxy and
+leaves OpenSSH and its loaded keys running, but the proxy socket is unavailable
+until Koyabar starts again. Terminals can be launched directly by Hyprland; they
+reach the proxy through the inherited socket address rather than their parent
+process. Closing Koyabar does not terminate those terminals or their SSH connections.
 
 For a manual load (including keys elsewhere), use `./ssh-add.sh [ssh-add options
 or key paths]`. With no arguments it loads OpenSSH's usual default keys; Super+U
@@ -225,6 +240,19 @@ bar, workspace strip and Day.js code have been removed. The notification and
 Wi-Fi interfaces, shared controls, fonts and artwork were
 adapted from the local `koya-shell` checkout. The bundled Inter license is in
 `assets/fonts/OFL-Inter.txt`.
+
+Password fields in Wi-Fi, the lock screen and the SSH prompt use Koya's standard
+`InputText` control with `password: true`. The shell supplies the visuals; the
+standard control owns caret blinking, focus, Unicode editing, arrow/Home/End
+navigation, deletion, paste and horizontal scrolling. Password mode masks both
+committed and composing text, suppresses clipboard copy/cut and never supplies
+surrounding text to input methods. Wi-Fi's explicit Show action retains those
+privacy rules. Submitted SSH/lock values and destroyed controls are cleared.
+
+Development runs automatically mount `../helix/koya-base/assets` when
+`KOYA_ASSET_DIR` is unset. Other installations should supply matching standard
+assets with password-enabled `InputText` through `KOYA_ASSET_DIR` or the runtime's
+packaged assets.
 
 UI calls cross from the script thread to the render thread. Queue independent
 creation, setup and animation calls with `Promise.all`, then await the batch
