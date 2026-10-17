@@ -1,13 +1,109 @@
-# Koya Desktop Shell
+# Koya Bar
 
-A Wayland desktop shell and login greeter built with [Koya](https://www.koya-ui.com/).
-Designed for Hyprland on GNU/Linux, this project demonstrates Koya with a
-desktop bar, application picker, account app, settings, Wi-Fi controls and
-session locking.
+A desktop shell for Hyprland, built with [Koya](https://www.koya-ui.com/).
 
-The bar provides workspaces, a clock, network and battery status, volume
-controls and notifications. Every connected monitor gets its own bar and
-wallpaper. Hyprland manages application windows and workspaces.
+<p align="center">
+  <img src="docs/screenshots/desktop.jpg" alt="Koya Bar on Hyprland with the network popover open">
+</p>
+
+## Why this exists
+
+Koya started here. I wanted UI elements on Hyprland while I was messing around
+with Arch, so I wrote a lean Vulkan renderer, wired it straight into Wayland and
+reused a UI model I'd already built for games.
+
+It became a real project when I needed to replace Electron. I wanted the
+iteration speed and absolute visual control of the web without dragging in a
+whole web stack, and the performance and RAM bill that comes with it. That's
+why it's JavaScript, with a layout and animation model that feels a bit like
+CSS. Koya renders it on the GPU with no browser underneath.
+
+Koya has since grown well beyond that. I use it every day for embedded, desktop
+and game UI.
+
+Koya Bar is where the original experiment ended up; a bar, application picker,
+notifications, Wi-Fi, settings, a lock screen and a login greeter. It's the
+primary shell on my main laptop, and it's the clearest way to show what Koya
+can do on a large screen with a keyboard and mouse.
+
+## Why you might want it
+
+Most Linux desktops are assembled from parts. The bar comes from one project,
+the launcher from another and the lock screen from a third, and each has its
+own idea of what a button should look like. Getting them to agree takes a pile
+of config files and a fair amount of compromise.
+
+Koya Bar is one shell, from the login screen to the lock screen. Change the
+theme once and everything follows it, including the greeter.
+
+It's also meant to be looked at. I like text interfaces and they have their
+place, but I also like the visual polish and consistency of macOS, and Linux
+rarely gets that. Popovers drop in, meters light up segment by segment and busy
+states animate rather than printing "Loading…". That doesn't cost what it would in Electron; the whole
+shell sits at around 48 MB of memory.
+
+And it's meant to be pulled apart. The UI is about 7,000 lines of plain
+JavaScript in [`apps/`](apps/), with no build step. Native code only appears
+where the system demands it; PAM, greetd and the SSH agent proxy. If you don't
+like how something looks or behaves, change it.
+
+<p align="center">
+  <a href="docs/screenshots/launcher.jpg"><img src="docs/screenshots/launcher.jpg" width="400" alt="Application picker"></a>
+  <a href="docs/screenshots/theme-editor.jpg"><img src="docs/screenshots/theme-editor.jpg" width="400" alt="Theme editor in Settings"></a>
+  <a href="docs/screenshots/power.jpg"><img src="docs/screenshots/power.jpg" width="400" alt="Battery and power popover"></a>
+  <a href="docs/screenshots/greeter.jpg"><img src="docs/screenshots/greeter.jpg" width="400" alt="Login greeter"></a>
+</p>
+
+## What's included
+
+| | |
+| --- | --- |
+| **Bar** | Workspaces, clock, network, battery and power modes, volume and notifications, with a bar and wallpaper on every monitor |
+| **Application picker** | Search across desktop entries that ignores case and accents, driven entirely from the keyboard |
+| **Settings** | Theme editor with live preview, wallpapers and clock format |
+| **Wi-Fi** | Join, forget and manage saved networks |
+| **Account** | Profile picture, display name, password and automatic login |
+| **Lock screen** | Compositor session lock on every output, authenticated through PAM |
+| **Login greeter** | A greetd greeter in the same visual language as the desktop |
+| **SSH prompts** | Passphrase prompts for your existing ssh-agent, asked on first use |
+
+Controls for hardware or services you don't have are hidden rather than greyed
+out.
+
+## Quick start
+
+You'll need Hyprland, a Vulkan driver and Koya 0.7.1 or newer (see
+[Requirements](#requirements)).
+
+```bash
+git clone https://github.com/Omnomios/koya-bar.git
+cd koya-bar
+./run.sh
+```
+
+To make it your session, add the absolute path to `run.sh` to Hyprland's
+startup commands. Run one shell per session, and stop any existing bar or
+wallpaper service first.
+
+Each app also runs on its own. Bind `launcher.sh` to a shortcut in place of
+`rofi -show drun`, for example:
+
+```bash
+./launcher.sh     # Application picker
+./settings.sh     # Theme, wallpaper and clock
+./account.sh      # Profile, password and sign-in options
+./wifi.sh         # Wireless networks
+./lock.sh         # Lock the session
+```
+
+To add Account, Koya Settings and Koya Wi-Fi to other launchers and desktop
+menus, run `./install-desktop-entries.sh`. It writes to
+`${XDG_DATA_HOME:-~/.local/share}/applications`, or to the directory given as
+its first argument. Entries point at this checkout, so rerun it after moving the
+repo.
+
+For extra translucency, enable Hyprland's blur for layer namespaces beginning
+with `koya-`. Float the desktop portal's file chooser so it opens as a dialog.
 
 ## Requirements
 
@@ -18,7 +114,7 @@ wallpaper. Hyprland manages application windows and workspaces.
   library to build this project's native modules.
 - GdkPixbuf and its image loaders; librsvg for SVG icons.
 
-Install the services for the features you use:
+Install only the services for the features you use:
 
 | Feature | Service or tool |
 | --- | --- |
@@ -32,47 +128,25 @@ Install the services for the features you use:
 | SSH prompts | OpenSSH and an existing ssh-agent |
 | Idle locking | hypridle |
 
-## Run
+`run.sh` uses the installed Koya and builds this project's native modules into
+`build/`. For a nonstandard installation, set `KOYA_BIN`, `KOYA_ASSET_DIR` and
+`KOYA_PLUGIN_DIR` to the executable, its matching shared assets and its
+plugins. Assets default to `../share/koya/assets` relative to the executable.
 
-```bash
-git clone https://github.com/Omnomios/koya-bar.git
-cd koya-bar
-./run.sh
-```
+## Bar controls
 
-The runner uses installed Koya and builds this project's native modules into
-`build/`. For a nonstandard installation, set `KOYA_BIN`,
-`KOYA_ASSET_DIR` and `KOYA_PLUGIN_DIR` to the executable, matching shared assets
-and plugins. Assets default to `../share/koya/assets` relative to the executable.
+- **Network:** connection summary, addresses and connectivity; **Configure
+  Wi-Fi** opens the Wi-Fi app for joining and managing saved networks.
+- **Battery:** status, time estimates, power rate, energy, health and cycles.
+  Supported batteries get an individual charge-control switch using UPower's
+  configured preset. Available power modes come from power-profiles-daemon.
+- **Audio:** click the speaker for volume and mute controls. The slider follows
+  the default output and external volume changes.
+- **Notifications:** banners and history with actions, dismissal and clear-all.
+  History remains in memory until the shell exits.
 
-Add the absolute path to `run.sh` to Hyprland's startup commands. Run one shell
-per session and stop any existing bar or wallpaper service before starting it.
-
-The standalone apps are:
-
-```bash
-./launcher.sh     # Application picker
-./settings.sh     # Theme, wallpaper and clock
-./account.sh      # Profile, password and sign-in options
-./wifi.sh         # Wireless networks
-./lock.sh         # Lock the session
-```
-
-To add Account, Koya Settings and Koya Wi-Fi to other launchers and desktop
-menus, run:
-
-```bash
-./install-desktop-entries.sh
-```
-
-The installer writes to `${XDG_DATA_HOME:-~/.local/share}/applications`, or its
-first argument. Entries refer to this checkout; rerun it after moving the repo.
-Koya's picker also discovers the generated entries directly in `build/`.
-
-The bar and apps use layer-shell surfaces. Configure Hyprland's blur for
-namespaces beginning with `koya-` if desired. Float the desktop portal's file
-chooser so it opens as a dialog. Settings and Account release their input and
-hide while the chooser or an authorization prompt is open.
+Controls for unavailable hardware or services are omitted. System changes use
+the corresponding service's existing authorisation policy.
 
 ## Settings
 
@@ -91,7 +165,9 @@ is copied to the greeter's cache.
 ISO `YYYY-MM-DD` format. The bar and lock screen use the same saved options.
 
 Preferences are saved atomically to
-`${XDG_CONFIG_HOME:-~/.config}/koya-bar/settings.json`.
+`${XDG_CONFIG_HOME:-~/.config}/koya-bar/settings.json`. Settings and Account
+release their input and hide while a file chooser or an authorisation prompt
+is open.
 
 ## Account
 
@@ -103,28 +179,12 @@ no image is available. Authentication always uses the login name.
 
 Password changes run through `passwd` on a private terminal. The app reports
 the system's refusal and clears password fields after use. Automatic login
-requires the greeter installation below and administrator authorization.
-
-## Bar controls
-
-- **Network:** connection summary, addresses and connectivity; **Configure
-  Wi-Fi** opens the Wi-Fi app for joining and managing saved networks.
-- **Battery:** status, time estimates, power rate, energy, health and cycles.
-  Supported batteries get an individual charge-control switch using UPower's
-  configured preset. Available power modes come from power-profiles-daemon.
-- **Audio:** click the speaker for volume and mute controls. The slider follows
-  the default output and external volume changes.
-- **Notifications:** banners and history with actions, dismissal and clear-all.
-  History remains in memory until the shell exits.
-
-Controls for unavailable hardware or services are omitted. System changes use
-the corresponding service's existing authorization policy.
+requires the greeter installation below and administrator authorisation.
 
 ## Application picker
 
-Bind `launcher.sh` to your preferred Hyprland shortcut to replace a launcher
-such as `rofi -show drun`. Type to search desktop entries by name, keywords,
-description or executable; matching ignores case and accents.
+Type to search desktop entries by name, keywords, description or executable;
+matching ignores case and accents.
 
 Use Up/Down or Tab to select, Page Up/Down to move through results, Enter to
 launch, and Escape to close. Left/Right, Home/End, Backspace and Delete edit the
