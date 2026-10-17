@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Account
+GenericName=User Profile
+Comment=Change your account picture and display name
+Exec="@SHELL_ROOT@/account.sh"
+Icon=avatar-default
+Terminal=false
+Categories=Settings;
+Keywords=Koya;User;Avatar;Picture;Profile;Name;
+StartupWMClass=org.koya.Account

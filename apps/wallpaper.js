@@ -1,12 +1,12 @@
 import * as Compositor from 'Koya/Compositor';
-import * as UI from 'Helix/UserInterface';
+import { forgetWindow } from './theme-ui.js';
+import * as UI from './theme-ui.js';
 import { connect } from './session.js';
 import { wallpaperSurface, resizeWallpaper } from './wallpaper-surface.js';
 import { windowLayout } from './window-layout.js';
 
 export default async (options = {}) => {
-  const displays = await Compositor.listDisplays();
-  const display = options.display || displays[0];
+  const display = options.display || (await Compositor.listDisplays({ backend: 'wayland' }))[0];
   const win = await Compositor.createWindow({
     role: 'background', display: display?.display || '',
     exclusiveZone: -1, namespace: 'koya-background', msaaSamples: 1,
@@ -22,5 +22,5 @@ export default async (options = {}) => {
     finally { await Compositor.setWindowRenderingEnabled(win, true); }
   });
   const disconnect = connect('wallpaper');
-  return { window: win, dispose: async () => { disconnect(); stopLayout(); await Compositor.destroyWindow(win); } };
+  return { window: win, dispose: async () => { disconnect(); stopLayout(); forgetWindow(win); await Compositor.destroyWindow(win); } };
 };

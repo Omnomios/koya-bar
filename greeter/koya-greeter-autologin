@@ -1,0 +1,34 @@
+#!/bin/bash
+# Automatic login for the Koya greeter. Installed as
+# /usr/local/libexec/koya-greeter-autologin.
+#
+#   status    print the account that signs in automatically (anyone may ask)
+#   enable    sign the calling account in automatically at boot
+#   disable   stop signing in automatically
+#
+# enable and disable run as root through pkexec (polkit action
+# org.koya.greeter.set-autologin, administrator approval). They only ever
+# name the account pkexec reports as the caller.
+set -euo pipefail
+etc=${KOYA_GREETER_ETC:-/etc/koya-greeter}
+file=$etc/autologin
+usable() { [[ -n $1 && ${#1} -le 256 && $1 =~ ^[[:graph:]]+$ && $1 != */* && $1 != .* && $1 != -* ]]; }
+case ${1:-} in
+  status)
+    name=''
+    [[ -f $file ]] && IFS= read -r name < "$file" || true
+    if usable "$name" && getent passwd -- "$name" > /dev/null; then printf '%s\n' "$name"; fi ;;
+  enable)
+    [[ -n ${PKEXEC_UID:-} ]] || { printf 'Run through pkexec.\n' >&2; exit 2; }
+    name=$(id -nu -- "$PKEXEC_UID")
+    usable "$name" || { printf 'Unusable account name.\n' >&2; exit 3; }
+    mkdir -p -m 755 -- "$etc"
+    tmp=$(mktemp -- "$etc/.autologin.XXXXXX")
+    printf '%s\n' "$name" > "$tmp"
+    chmod 644 -- "$tmp"
+    mv -f -- "$tmp" "$file" ;;
+  disable)
+    [[ -n ${PKEXEC_UID:-} ]] || { printf 'Run through pkexec.\n' >&2; exit 2; }
+    rm -f -- "$file" ;;
+  *) printf 'Usage: koya-greeter-autologin status|enable|disable\n' >&2; exit 2 ;;
+esac

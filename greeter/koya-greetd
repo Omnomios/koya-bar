@@ -1,0 +1,77 @@
+#!/bin/bash
+# greetd's start command for the Koya greeter (see greetd-koya.conf).
+# Installed as /usr/local/libexec/koya-greetd.
+#
+# Builds this start's config from /etc/greetd/config.toml and, when an account
+# has turned on automatic login (koya-greeter-autologin), adds an
+# [initial_session] that starts that account's last session (AccountsService
+# Session) without the greeter. greetd runs initial_session once, when it
+# starts; signing out returns to the greeter. Then runs greetd. Any problem
+# falls back to plain greetd, so a mistake here never blocks signing in.
+#
+#   --write-only   build the config and stop (tests)
+set -uo pipefail
+base=${KOYA_GREETD_BASE:-/etc/greetd/config.toml}
+out=${KOYA_GREETD_RUNTIME:-/run/koya-greeter/greetd.toml}
+helper=${KOYA_GREETER_HELPER:-/usr/local/libexec/koya-greeter-autologin}
+dirs=${KOYA_LOGIN_SESSION_DIRS:-/usr/local/share/wayland-sessions:/usr/share/wayland-sessions}
+greetd=${KOYA_GREETD:-/usr/bin/greetd}
+busctl=${KOYA_BUSCTL:-busctl}
+
+toml() { local value=${1//\\/\\\\}; printf '%s' "${value//\"/\\\"}"; }
+# The account's last session, as AccountsService keeps it ("hyprland").
+account_session() {
+  local path value
+  path=$("$busctl" --system --timeout=5 call org.freedesktop.Accounts /org/freedesktop/Accounts \
+    org.freedesktop.Accounts FindUserByName s "$1" 2>/dev/null | sed -n 's/^o "\(.*\)"$/\1/p') || return 0
+  [[ -n $path ]] || return 0
+  value=$("$busctl" --system --timeout=5 get-property org.freedesktop.Accounts "$path" \
+    org.freedesktop.Accounts.User Session 2>/dev/null | sed -n 's/^s "\(.*\)"$/\1/p') || return 0
+  [[ $value =~ ^[A-Za-z0-9_.+@-]{1,255}$ ]] && printf '%s' "$value"
+}
+# One key of a session file's [Desktop Entry] group.
+entry() { awk -v key="$2" -F= '/^\[/{group=$0} group=="[Desktop Entry]" && $1==key {sub(/^[^=]*=/,""); print; exit}' "$1"; }
+# A runnable session file: the named one, else Hyprland, else the first.
+session_file() {
+  local name=$1 dir candidates=() file
+  IFS=: read -ra list <<< "$dirs"
+  [[ -n $name ]] && for dir in "${list[@]}"; do candidates+=("$dir/$name.desktop"); done
+  for dir in "${list[@]}"; do candidates+=("$dir/hyprland.desktop"); done
+  for dir in "${list[@]}"; do for file in "$dir"/*.desktop; do candidates+=("$file"); done; done
+  for file in "${candidates[@]}"; do
+    [[ -f $file ]] || continue
+    [[ $(entry "$file" Hidden) == true || $(entry "$file" NoDisplay) == true ]] && continue
+    local exec=$(entry "$file" Exec) try=$(entry "$file" TryExec)
+    [[ -n $exec ]] || continue
+    [[ -z $try ]] || command -v -- "$try" > /dev/null || continue
+    command -v -- "${exec%% *}" > /dev/null || continue
+    printf '%s' "$file"; return
+  done
+}
+
+build() {
+  mkdir -p -m 755 -- "$(dirname -- "$out")" || return 1
+  local tmp user='' file command desktops
+  tmp=$(mktemp -- "$out.XXXXXX") || return 1
+  cp -- "$base" "$tmp" || { rm -f -- "$tmp"; return 1; }
+  [[ -x $helper ]] && user=$("$helper" status 2>/dev/null)
+  if [[ -n $user ]] && ! grep -q '^\[initial_session\]' "$base"; then
+    file=$(session_file "$(account_session "$user")")
+    if [[ -n $file ]]; then
+      # Field codes (%f, %U…) mean nothing at login.
+      command=$(entry "$file" Exec | sed -E 's/[[:space:]]+%[fFuUdDnNickvm]//g')
+      desktops=$(entry "$file" DesktopNames | tr ';' ':' | sed 's/:*$//')
+      command="env XDG_SESSION_TYPE=wayland${desktops:+ XDG_CURRENT_DESKTOP=$desktops} $command"
+      printf '\n[initial_session]\ncommand = "%s"\nuser = "%s"\n' "$(toml "$command")" "$(toml "$user")" >> "$tmp"
+    fi
+  fi
+  chmod 644 -- "$tmp" && mv -f -- "$tmp" "$out"
+}
+
+if build; then
+  [[ ${1:-} == --write-only ]] && exit 0
+  exec "$greetd" --config "$out"
+fi
+printf 'koya-greetd: could not build the greetd config; starting greetd as configured.\n' >&2
+[[ ${1:-} == --write-only ]] && exit 1
+exec "$greetd"

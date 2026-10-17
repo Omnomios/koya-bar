@@ -2,9 +2,9 @@
 Type=Application
 Name=Koya Settings
 GenericName=Desktop Settings
-Comment=Choose your desktop wallpaper
+Comment=Personalise your desktop theme, wallpaper and clock
 Exec="@SHELL_ROOT@/settings.sh"
-Icon=@SHELL_ROOT@/assets/launcher/koya-settings.png
+Icon=@SHELL_ROOT@/assets/launcher/koya-settings.svg
 Terminal=false
 Categories=Settings;DesktopSettings;
 Keywords=Koya;Wallpaper;Preferences;

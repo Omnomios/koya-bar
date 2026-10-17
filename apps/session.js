@@ -2,6 +2,7 @@ import { session as Bus } from 'Module/dbus';
 import * as Log from 'Helix/Log';
 import * as Engine from 'Helix/Engine';
 import { configureWallpaper } from './wallpaper-surface.js';
+import { configureTheme } from './theme.js';
 
 const NAME = 'org.koya.Shell1', PATH = '/org/koya/Shell1';
 export const call = (method, signature = '', ...args) => Bus.call(NAME, PATH, NAME, method, signature, ...args);
@@ -17,7 +18,7 @@ export function connect(component, onState = () => {}, onApplications = () => {}
       while (dirty && !disposed) {
         dirty = false;
         const state = await call('GetState');
-        if (!disposed) { await configureWallpaper(state); await onState(state); }
+        if (!disposed) { await configureTheme(state); await configureWallpaper(state); await onState(state); }
       }
     } finally { refreshing = false; }
   };

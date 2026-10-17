@@ -1,6 +1,8 @@
 {
   "name": "koya-bar",
+  "description": "A Wayland desktop shell and login greeter built with Koya",
+  "license": "CC-BY-4.0",
   "private": true,
   "type": "module",
-  "scripts": { "test": "node tests/models.mjs && node tests/ssh-agent-model.mjs && node --experimental-vm-modules tests/cursor.mjs && node --experimental-vm-modules tests/batching.mjs" }
+  "scripts": { "test": "node tests/login.mjs && node tests/lock.mjs && node tests/accounts.mjs && node tests/ssh-agent-model.mjs" }
 }

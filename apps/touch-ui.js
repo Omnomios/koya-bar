@@ -1,5 +1,5 @@
-import * as UI from 'Helix/UserInterface';
-import { FONT, FONT_STRONG, CREAM, CLEAR, CARD, TONAL, TRACK, ORANGE, RADIUS, TYPE, HEADER_HEIGHT, TOUCH } from './theme.js';
+import * as UI from './theme-ui.js';
+import { FONT, FONT_STRONG, CLEAR, RADIUS, TYPE, HEADER_HEIGHT, MIN_CONTROL_SIZE, TEXT, SURFACE, HIGHLIGHT } from './theme.js';
 import { clips } from './motion.js';
 import { haptic } from './haptics.js';
 import { pressFeedback } from './input-model.js';
@@ -17,7 +17,7 @@ export async function children(win, parent, pending) {
 // basis those bounds are the tight glyph box, which changes with every string
 // (ascenders, descenders, width), so labels jump when their text changes.
 // 'line' uses the font's stable line box instead.
-export async function text(win, parent, value, size, width, height, colour = CREAM, font = FONT, justify = 'center') {
+export async function text(win, parent, value, size, width, height, colour = TEXT.primary, font = FONT, justify = 'center') {
   const align = { left: 'start', center: 'center', right: 'end' }[justify];
   const id = await UI.createElement(win, {
     renderable: { type: 'text', string: value, size, font, colour, justify, vAlign: 'center', metricsBasis: 'line' },
@@ -28,7 +28,7 @@ export async function text(win, parent, value, size, width, height, colour = CRE
 }
 
 // Pointer cursor plus an optional hover background, restored on leave.
-export function hoverable(win, target, cursor = 'pointer', hover, rest = [0, 0, 0, 0]) {
+export function hoverable(win, target, cursor = 'pointer', hover, rest = CLEAR) {
   const pointer = controlCursor(win, cursor);
   let inside = false;
   return event => {
@@ -43,7 +43,7 @@ export function hoverable(win, target, cursor = 'pointer', hover, rest = [0, 0, 
 
 // Start-aligned, clipped and word-wrapped: row titles, captions and body copy.
 // Fluid labels inherit their reflow box from the layout bounds.
-export async function label(win, parent, value, size, width, height, colour = CREAM, font = FONT) {
+export async function label(win, parent, value, size, width, height, colour = TEXT.primary, font = FONT) {
   const fluid = width === 'auto' || width === 0;
   const id = await UI.createElement(win, {
     renderable: { type: 'text', string: value, size, font, colour, layoutMode: 'word-wrap', justify: 'left', vAlign: 'center',
@@ -75,7 +75,7 @@ export async function button(win, parent, label, width, height, handler, options
   let motion, spinner;
   let waiting = false;
   const id = await UI.createElement(win, {
-    renderable: { ...(options.renderable || { type: 'box', colour: options.colour || [0,0,0,0], cornerRadius: options.radius ?? RADIUS.control, cornerResolution: 32 }),
+    renderable: { ...(options.renderable || { type: 'box', colour: options.colour || CLEAR, cornerRadius: options.radius ?? RADIUS.control, cornerResolution: 32 }),
       origin: { x: 0.5, y: 0.5 } },
     layout: { type: 'column', justifyContent: 'center', alignItems: 'center', gap: options.gap ?? 8 },
     item: { size: { x: width, y: height } }, contentAlign: 'fill', inheritAnimation: true,
@@ -86,7 +86,7 @@ export async function button(win, parent, label, width, height, handler, options
       cancel: event => { if (!waiting) motion?.play('settle'); options.onRelease?.(event); }
     }),
     onActivate: handler, onHover: hoverable(win, options.hoverTarget || (() => id), options.cursor || 'pointer', options.hover,
-      options.hoverTarget ? [0, 0, 0, 0] : options.colour || [0, 0, 0, 0]),
+      options.hoverTarget ? CLEAR : options.colour || CLEAR),
     ...(options.element || {})
   });
   const pose = scale => ({ scale: { x: scale, y: scale } });
@@ -101,7 +101,7 @@ export async function button(win, parent, label, width, height, handler, options
       ...(options.icon ? [icon(win, null, options.icon, options.iconSize || 72, width, options.iconSize || 72)
         .then(glyph => { options.onIcon?.(glyph); return glyph; })] : []),
       ...(label && options.onFeedback ? [busyLabel()] : label ? [text(win, null, label, options.size || TYPE.body, width, options.labelHeight || 24,
-        options.labelColour || options.accent || CREAM, options.font)
+        options.labelColour || options.accent || TEXT.primary, options.font)
         .then(labelId => { options.onLabel?.(labelId); return labelId; })] : [])
     ])
   ]);
@@ -113,12 +113,12 @@ export async function button(win, parent, label, width, height, handler, options
   return id;
 
   async function busyLabel() {
-    const SPIN = 14, GAP = 8, lineHeight = options.labelHeight || 24, colour = options.labelColour || options.accent || CREAM;
+    const SPINNER_SIZE = 14, SPINNER_GAP = 8, lineHeight = options.labelHeight || 24, colour = options.labelColour || options.accent || TEXT.primary;
     const [line, spin, labelId, spacer] = await Promise.all([
-      UI.createElement(win, { layout: { type: 'row', justifyContent: 'center', alignItems: 'center', gap: GAP }, item: { size: { x: width, y: lineHeight } } }),
-      throbber(win, null, SPIN, colour, lineHeight),
-      text(win, null, label, options.size || TYPE.body, width - 2 * (SPIN + GAP), lineHeight, colour, options.font, 'left'),
-      UI.createElement(win, { item: { size: { x: SPIN, y: lineHeight } } })
+      UI.createElement(win, { layout: { type: 'row', justifyContent: 'center', alignItems: 'center', gap: SPINNER_GAP }, item: { size: { x: width, y: lineHeight } } }),
+      throbber(win, null, SPINNER_SIZE, colour, lineHeight),
+      text(win, null, label, options.size || TYPE.body, width - 2 * (SPINNER_SIZE + SPINNER_GAP), lineHeight, colour, options.font, 'left'),
+      UI.createElement(win, { item: { size: { x: SPINNER_SIZE, y: lineHeight } } })
     ]);
     spinner = spin;
     await Promise.all([spin.id, labelId, spacer].map(child => UI.attach(win, line, child)));
@@ -141,7 +141,7 @@ export async function sheetHeader(win, parent, title, width, actions = [], acces
     label(win, null, title, TYPE.title, 0, HEADER_HEIGHT).then(async id => { await UI.setGrow(win, id, 1); return id; }),
     ...(accessory ? [accessory.build(null)] : []),
     ...actions.map(action => action.build ? action.build(null)
-      : button(win, null, '', action.width || TOUCH, HEADER_HEIGHT, action.handler,
+      : button(win, null, '', action.width || MIN_CONTROL_SIZE, HEADER_HEIGHT, action.handler,
         { colour: CLEAR, icon: action.icon, iconSize: action.iconSize || 16 }))
   ]);
   if (parent != null) await UI.attach(win, parent, row);
@@ -155,7 +155,7 @@ export async function sheetHeader(win, parent, title, width, actions = [], acces
 export async function row(win, parent, width, height, handler, options = {}) {
   let motion;
   const id = await UI.createElement(win, {
-    renderable: { type: 'box', colour: options.colour || CARD, cornerRadius: options.radius ?? RADIUS.surface, cornerResolution: 16, origin: { x: 0.5, y: 0.5 } },
+    renderable: { type: 'box', colour: options.colour || SURFACE.card, cornerRadius: options.radius ?? RADIUS.surface, cornerResolution: 16, origin: { x: 0.5, y: 0.5 } },
     layout: { type: 'row', alignItems: 'center', gap: options.gap ?? 12, padding: { l: 12, r: options.right ?? 8, t: 0, b: 0 } },
     item: { size: { x: width, y: height } }, contentAlign: 'fill', inheritAnimation: true,
     onPress: pressFeedback({
@@ -163,7 +163,9 @@ export async function row(win, parent, width, height, handler, options = {}) {
       end: event => { motion?.play('release'); options.onRelease?.(event); },
       cancel: event => { motion?.play('settle'); options.onRelease?.(event); }
     }),
-    onActivate: handler, onHover: controlCursor(win, options.cursor || 'pointer')
+    // Rows lift on hover: a filled hover surface over a card, a soft tint over a clear row.
+    onActivate: handler, onHover: hoverable(win, () => id, options.cursor || 'pointer',
+      options.hover === undefined ? ((options.colour || SURFACE.card) === SURFACE.card ? SURFACE.rowHover : HIGHLIGHT.hover) : options.hover, options.colour || SURFACE.card)
   });
   // Press frames also restore opacity and offset, so tapping a row during its
   // entrance cannot leave it half-faded or displaced.
@@ -179,11 +181,11 @@ export async function row(win, parent, width, height, handler, options = {}) {
 // Secondary actions: a quiet filled pill that reads as tappable without
 // competing with the content around it.
 export function pill(win, parent, value, width, handler, options = {}) {
-  const height = options.height || TOUCH;
-  // Semibold labels hold up against the tonal fill at caption size.
+  const height = options.height || MIN_CONTROL_SIZE;
+  // Semibold labels hold up against the control surface at caption size.
   return button(win, parent, value, width, height, handler, {
-    colour: options.colour || TONAL, radius: RADIUS.control, size: options.size || TYPE.caption + 1,
-    labelHeight: height, labelColour: options.labelColour || CREAM, font: FONT_STRONG, ...options
+    colour: options.colour || SURFACE.control, radius: RADIUS.control, size: options.size || TYPE.caption + 1,
+    labelHeight: height, labelColour: options.labelColour || TEXT.primary, font: FONT_STRONG, ...options
   });
 }
 
@@ -197,7 +199,7 @@ export async function toggle(win, parent, on, handler) {
     // Invisible box: a bare container ignores its pivot when scaled.
     renderable: { type: 'box', colour: CLEAR, origin: { x: 0.5, y: 0.5 } },
     layout: { type: 'none' },
-    item: { size: { x: width + 16, y: TOUCH } }, contentAlign: 'fill', inheritAnimation: true,
+    item: { size: { x: width + 16, y: MIN_CONTROL_SIZE } }, contentAlign: 'fill', inheritAnimation: true,
     onPress: pressFeedback({ start: () => { haptic(); pop?.play('press'); },
       end: () => pop?.play('release'), cancel: () => pop?.play('settle') }),
     onActivate: handler, onHover: controlCursor(win)
@@ -210,12 +212,12 @@ export async function toggle(win, parent, on, handler) {
     }),
     UI.createElement(win, {
       // The one fully round control: a switch reads as a switch by its shape.
-      renderable: { type: 'box', colour: on ? ORANGE : TRACK, cornerRadius: height / 2, cornerResolution: 32 },
+      renderable: { type: 'box', colour: on ? SURFACE.accent : SURFACE.track, cornerRadius: height / 2, cornerResolution: 32 },
       layout: { type: 'none' },
-      item: { position: { x: 8, y: (TOUCH - height) / 2 }, size: { x: width, y: height } }, contentAlign: 'fill'
+      item: { position: { x: 8, y: (MIN_CONTROL_SIZE - height) / 2 }, size: { x: width, y: height } }, contentAlign: 'fill'
     }),
     UI.createElement(win, {
-      renderable: { type: 'box', colour: CREAM, cornerRadius: knob / 2, cornerResolution: 32, origin: { x: 0.5, y: 0.5 } },
+      renderable: { type: 'box', colour: SURFACE.thumb, cornerRadius: knob / 2, cornerResolution: 32, origin: { x: 0.5, y: 0.5 } },
       item: { position: { x: inset, y: inset }, size: { x: knob, y: knob } }, contentAlign: 'fill'
     })
   ]);
@@ -237,7 +239,7 @@ export async function toggle(win, parent, on, handler) {
   const set = async value => {
     if (value === current) return;
     current = value;
-    await Promise.all([UI.setBoxColour(win, track, value ? ORANGE : TRACK), motion.play(value ? 'on' : 'off')]);
+    await Promise.all([UI.setBoxColour(win, track, value ? SURFACE.accent : SURFACE.track), motion.play(value ? 'on' : 'off')]);
   };
   return { id: target, set };
 }
@@ -247,7 +249,7 @@ export async function toggle(win, parent, on, handler) {
 // with a phase offset, so nothing has to rotate. The ring is centred in a
 // box `height` tall, so it lines up with text of that line height without
 // relying on cross-axis alignment. Hidden until started.
-export async function throbber(win, parent, size = 14, colour = CREAM, height = size) {
+export async function throbber(win, parent, size = 14, colour = TEXT.primary, height = size) {
   const count = 12, dot = size / 6, radius = size / 2 - dot / 2, period = 0.9, dim = 0.12, top = (height - size) / 2;
   const id = await UI.createElement(win, { layout: { type: 'none' }, item: { size: { x: size, y: height } } });
   const dots = await children(win, id, Array.from({ length: count }, (_, i) => {

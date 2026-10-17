@@ -1,2 +1,8 @@
 /build/
 /.work/
+/tmp/
+/.agents/
+/.codex/
+/.aws/
+/AGENTS.md
+/node_modules/

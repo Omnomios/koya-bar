@@ -1,4 +1,4 @@
-import * as UI from 'Helix/UserInterface';
+import * as UI from './theme-ui.js';
 import * as Log from 'Helix/Log';
 import { WALLPAPERS, wallpaperFor, wallpaperFrame, knownWallpaper, isUserWallpaper } from './wallpapers.js';
 import { loadUserWallpapers } from './user-wallpapers.js';

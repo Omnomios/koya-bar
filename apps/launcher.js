@@ -1,5 +1,5 @@
 import * as Compositor from 'Koya/Compositor';
-import * as UI from 'Helix/UserInterface';
+import * as UI from './theme-ui.js';
 import * as Assets from 'Koya/Assets';
 import * as Event from 'Helix/Event';
 import * as Engine from 'Helix/Engine';
@@ -8,13 +8,16 @@ import * as Process from 'Module/process';
 import * as Hypr from 'Module/hypr';
 import * as Log from 'Helix/Log';
 import { LauncherModel } from './launcher-model.js';
-import { clips } from './motion.js';
+import { clips, presets } from './motion.js';
+import { createKit } from './kit.js';
+import { shadow } from './shadow.js';
 import { icon, label, row, children } from './touch-ui.js';
 import { surfaceCursor, controlCursor } from './cursor.js';
 import { popupContains } from './popup-layout.js';
-import { FONT, CREAM, ORANGE, CLEAR, TONAL, MUTED, POPOVER, SPACE, RADIUS, TYPE } from './theme.js';
+import { connect } from './session.js';
+import { FONT, CLEAR, SPACE, RADIUS, TYPE, TEXT, AUTO, ELEVATION, SURFACE, configureTheme } from './theme.js';
 
-const PAD = SPACE.m, FIELD = 40;
+const PANEL_PADDING = SPACE.m, SEARCH_FIELD_HEIGHT = 40;
 // One line per result: trim to roughly what fits at caption size.
 const clip = (value, limit) => value.length > limit ? value.slice(0, Math.max(0, limit - 1)).trimEnd() + '…' : value;
 
@@ -22,7 +25,9 @@ export default function main() {
   setTimeout(() => build().catch(error => { Log.error('Launcher: ' + error); Engine.quit(); }), 0);
 }
 async function build() {
-  const displays = await Compositor.listDisplays();
+  await configureTheme(Desktop.loadPreferences());
+  connect('launcher');
+  const displays = await Compositor.listDisplays({ backend: 'wayland' });
   if (!displays.length) throw new Error('No display available');
   let display = displays[0];
   try {
@@ -32,40 +37,47 @@ async function build() {
   } catch (_) {}
   // A compact spotlight-style picker: search field, results, key hints.
   const width = Math.min(560, Number(display.logical_width || display.width) - 40);
-  const ROW = 44, inner = width - PAD * 2, FOOTER = 24;
-  const capacity = Math.max(1, Math.min(9, Math.floor((Number(display.logical_height || display.height) - 160) / ROW)));
-  const height = PAD * 2 + FIELD + SPACE.s * 2 + capacity * ROW + FOOTER;
+  const RESULT_ROW_HEIGHT = 44, inner = width - PANEL_PADDING * 2, FOOTER_HEIGHT = 24;
+  const capacity = Math.max(1, Math.min(9, Math.floor((Number(display.logical_height || display.height) - 160) / RESULT_ROW_HEIGHT)));
+  const height = PANEL_PADDING * 2 + SEARCH_FIELD_HEIGHT + SPACE.s * 2 + capacity * RESULT_ROW_HEIGHT + FOOTER_HEIGHT;
   // The overlay covers the output so a click outside the picker closes it.
   const screen = { x: Number(display.logical_width || display.width), y: Number(display.logical_height || display.height) };
   const place = { x: Math.round((screen.x - width) / 2), y: Math.round((screen.y - height) / 2) };
   const win = await Compositor.createWindow({ role: 'overlay', anchor: 'top-left', size: screen,
     exclusiveZone: -1, display: display.display, namespace: 'koya-launcher', msaaSamples: 1,
     keyboardInteractivity: 'exclusive', acceptPointerEvents: true, transparent: true });
-  const [backdrop, root, field, queryLabel, caret, list, footer] = await Promise.all([
-    UI.createElement(win, { layout: { type: 'none' }, item: { size: { x: 'auto', y: 'auto' } }, onHover: surfaceCursor(win),
+  const kit = createKit(win);
+  const [backdrop, field, queryLabel, caret, results, footer] = await Promise.all([
+    UI.createElement(win, { layout: { type: 'none' }, item: { size: AUTO }, onHover: surfaceCursor(win),
       onActivate: event => { if (!launching && !popupContains(event.local, place, { x: width, y: height })) Engine.quit(); } }),
-    UI.createElement(win, { id: 'launcher-root', renderable: { type: 'box', colour: POPOVER, cornerRadius: RADIUS.surface, cornerResolution: 16 },
-      layout: { type: 'column', gap: SPACE.s, padding: { l: PAD, r: PAD, t: PAD, b: PAD } },
-      item: { position: place, size: { x: width, y: height } }, contentAlign: 'fill', onHover: surfaceCursor(win),
-      inputOptions: { blockInput: true } }),
-    UI.createElement(win, { renderable: { type: 'box', colour: TONAL, cornerRadius: RADIUS.control, cornerResolution: 16 },
-      layout: { type: 'none' }, item: { size: { x: inner, y: FIELD } }, contentAlign: 'fill', clipToBounds: true,
+    UI.createElement(win, { renderable: { type: 'box', colour: SURFACE.field, cornerRadius: RADIUS.control, cornerResolution: 16 },
+      layout: { type: 'none' }, item: { size: { x: 'auto', y: SEARCH_FIELD_HEIGHT } }, contentAlign: 'fill', clipToBounds: true,
       onHover: controlCursor(win, 'text') }),
+    // Inset in the field by margins; scrolled by a visual offset as it grows.
     UI.createElement(win, { id: 'launcher-query', renderable: { type: 'text', string: 'Type to search applications…',
-      font: FONT, size: TYPE.heading, colour: MUTED, metricsBasis: 'line', justify: 'left', vAlign: 'center' },
-      item: { size: { x: inner - 24, y: FIELD }, position: { x: 12, y: 0 } }, contentAlign: { x: 'start', y: 'center' }, clipToBounds: true }),
-    UI.createElement(win, { renderable: { type: 'box', colour: ORANGE },
-      item: { size: { x: 2, y: 20 }, position: { x: 12, y: (FIELD - 20) / 2 } }, contentAlign: 'fill' }),
-    UI.createElement(win, { id: 'launcher-list', layout: { type: 'column', gap: 2 }, item: { size: { x: inner, y: capacity * ROW } } }),
-    label(win, null, 'Loading applications…', TYPE.caption, inner, FOOTER, MUTED),
+      font: FONT, size: TYPE.heading, colour: TEXT.secondary, metricsBasis: 'line', justify: 'left', vAlign: 'center' },
+      item: { size: AUTO, margin: { t: 0, r: 12, b: 0, l: 12 } }, contentAlign: { x: 'start', y: 'center' }, clipToBounds: true }),
+    // The caret follows the measured caret position (a runtime value).
+    UI.createElement(win, { renderable: { type: 'box', colour: TEXT.caret },
+      item: { size: { x: 2, y: 20 }, position: { x: 12, y: (SEARCH_FIELD_HEIGHT - 20) / 2 } }, contentAlign: 'fill' }),
+    // Every result, in a native scroll viewport `capacity` rows tall.
+    kit.scrollArea({ height: capacity * RESULT_ROW_HEIGHT, id: 'launcher-list' }),
+    label(win, null, 'Loading applications…', TYPE.caption, 'auto', FOOTER_HEIGHT, TEXT.secondary),
     Compositor.setClearColor(win, 0, 0, 0, 0)
   ]);
+  const panel = await kit.surface('panel', { id: 'launcher-root', layout: { type: 'column', gap: SPACE.s }, padding: { t: PANEL_PADDING, r: PANEL_PADDING, b: PANEL_PADDING, l: PANEL_PADDING } });
+  const root = panel.content;
   const [blink] = await Promise.all([
     clips(win, caret, { blink: [{ time: 0, opacity: 1 }, { time: 0.5, opacity: 1 },
       { time: 0.51, opacity: 0 }, { time: 1, opacity: 0 }, { time: 1.01, opacity: 1, looping: true }] }),
-    UI.attach(win, root, field), UI.attach(win, root, list), UI.attach(win, root, footer),
-    UI.attach(win, field, queryLabel), UI.attach(win, field, caret), UI.attach(win, backdrop, root), UI.attachRoot(win, backdrop)
+    UI.attach(win, root, field), UI.attach(win, root, results.id), UI.attach(win, root, footer),
+    UI.attach(win, field, queryLabel), UI.attach(win, field, caret), UI.attach(win, backdrop, panel.id),
+    UI.setLayoutAABB(win, panel.id, { min: place, max: { x: place.x + width, y: place.y + height } })
   ]);
+  const shade = await shadow(win, backdrop, { x: width, y: height }, place, ELEVATION.panel.shadow);
+  await UI.attachRoot(win, backdrop);
+  kit.play(panel.id, presets.dropIn());
+  if (shade) kit.play(shade, presets.dropIn());
   await blink.play('blink');
   const model = new LauncherModel();
   let ready = false, launching = false, preedit = '', message = '', board, queue = Promise.resolve(), revision = 0;
@@ -85,27 +97,25 @@ async function build() {
       characters.splice(model.cursor, 0, ...Array.from(preedit));
       await Promise.all([
         UI.setTextString(win, queryLabel, characters.join('') || 'Type to search applications…'),
-        UI.setTextColour(win, queryLabel, model.query || preedit ? CREAM : MUTED)
+        UI.setTextColour(win, queryLabel, model.query || preedit ? TEXT.primary : TEXT.secondary)
       ]);
       const position = await UI.getTextCaretPosition(win, queryLabel, model.query || preedit ? model.cursor + Array.from(preedit).length : 0);
       const scroll = Math.max(0, Number(position.x || 0) - inner + 40);
       const [nextBoard] = await Promise.all([
-        UI.createElement(win, { layout: { type: 'column', gap: 2 }, item: { size: { x: inner, y: capacity * ROW } } }),
+        UI.createElement(win, { layout: { type: 'column', gap: 2 }, item: { size: { x: 'auto', y: Math.max(1, model.results.length) * RESULT_ROW_HEIGHT } } }),
         UI.setPosition(win, queryLabel, { x: -scroll, y: 0 }),
-        UI.setLayoutPosition(win, caret, { x: 12 + Number(position.x || 0) - scroll, y: (FIELD - 20) / 2 }),
+        UI.setLayoutPosition(win, caret, { x: 12 + Number(position.x || 0) - scroll, y: (SEARCH_FIELD_HEIGHT - 20) / 2 }),
         ...(board ? [UI.destroyElement(win, board)] : [])
       ]);
       board = nextBoard;
-      await UI.attach(win, list, board);
-      const first = Math.floor(model.selected / capacity) * capacity;
-      await children(win, board, model.results.slice(first, first + capacity).map(async (app, offset) => {
-        const index = first + offset;
+      await UI.attach(win, results.content, board);
+      await children(win, board, model.results.map(async (app, index) => {
         // Results sit directly on the surface; only the selection is filled.
-        const target = await row(win, null, inner, ROW - 2, () => { model.selected = index; launch(); },
-          { colour: index === model.selected ? TONAL : CLEAR, gap: 10, radius: RADIUS.control });
+        const target = await row(win, null, inner, RESULT_ROW_HEIGHT - 2, () => { model.selected = index; launch(); },
+          { colour: index === model.selected ? SURFACE.selected : CLEAR, hover: index === model.selected ? SURFACE.selected : undefined, gap: 10, radius: RADIUS.control });
         const [glyph, detail] = await children(win, target, [
-          icon(win, null, app.icon || '/rom/assets/launcher/application.png', 24, 28, ROW - 2),
-          UI.createElement(win, { layout: { type: 'row', alignItems: 'center', gap: SPACE.s }, item: { size: { x: inner - 62, y: ROW - 2 } } })
+          icon(win, null, app.icon || '/rom/assets/launcher/application.png', 24, 28, RESULT_ROW_HEIGHT - 2),
+          UI.createElement(win, { layout: { type: 'row', alignItems: 'center', gap: SPACE.s }, item: { size: { x: inner - 62, y: RESULT_ROW_HEIGHT - 2 } } })
         ]);
         if (!app.icon) loadIcon(app).then(texture => {
           if (texture && token === revision) return UI.setTexture(win, glyph, texture);
@@ -114,14 +124,17 @@ async function build() {
           UI.setElementId(win, target, 'launcher-app-' + app.id),
           children(win, detail, [
             // Name and description share one line, so more results fit.
-            label(win, null, app.name, TYPE.body, Math.round((inner - 62) * 0.45), ROW - 2, index === model.selected ? ORANGE : CREAM),
-            label(win, null, clip(app.genericName || app.comment || app.executable, Math.floor(((inner - 62) * 0.55 - SPACE.s) / 6.5)), TYPE.caption, Math.round((inner - 62) * 0.55) - SPACE.s, ROW - 2, MUTED)
+            label(win, null, app.name, TYPE.body, Math.round((inner - 62) * 0.45), RESULT_ROW_HEIGHT - 2, index === model.selected ? TEXT.accent : TEXT.primary),
+            label(win, null, clip(app.genericName || app.comment || app.executable, Math.floor(((inner - 62) * 0.55 - SPACE.s) / 6.5)), TYPE.caption, Math.round((inner - 62) * 0.55) - SPACE.s, RESULT_ROW_HEIGHT - 2, TEXT.secondary)
           ])
         ]);
         return target;
       }));
-      if (ready && !model.results.length) await label(win, board, 'No matching applications', TYPE.body, inner, ROW, MUTED);
+      if (ready && !model.results.length) await label(win, board, 'No matching applications', TYPE.body, inner, RESULT_ROW_HEIGHT, TEXT.secondary);
       const count = model.results.length;
+      // The scroll range follows the results; keep the selection in view.
+      await results.setContentHeight(Math.max(1, count) * RESULT_ROW_HEIGHT);
+      await results.reveal(model.selected * RESULT_ROW_HEIGHT, (model.selected + 1) * RESULT_ROW_HEIGHT);
       await UI.setTextString(win, footer, message || (!ready ? 'Loading applications…' : launching ? 'Opening ' + model.current?.name + '…'
         : (count ? (model.selected + 1) + ' / ' + count + '   ·   ↑↓ select   Enter open   Esc close' : 'Esc close')));
     }).catch(error => Log.error('Launcher layout: ' + error));

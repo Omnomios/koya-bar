@@ -1,0 +1,13 @@
+Koya Desktop Shell is a demonstration of Koya (https://www.koya-ui.com/).
+Project material is licensed under Creative Commons Attribution 4.0
+International; see LICENSE. Attribute it to the Koya Desktop Shell contributors
+and link to https://github.com/Omnomios/koya-bar.
+
+Third-party material retains its own licence:
+
+- assets/fonts/Inter-Regular.ttf and Inter-SemiBold.ttf: The Inter Project
+  Authors, SIL Open Font License 1.1. Full notice: assets/fonts/OFL-Inter.txt.
+- native/sdk/quickjs.h: Fabrice Bellard and Charlie Gordon, MIT licence.
+  The full copyright and permission notice is preserved in the header.
+
+Koya and the separately installed Helix plugins are separate dependencies.

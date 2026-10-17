@@ -1,5 +1,5 @@
 import * as Compositor from 'Koya/Compositor';
-import * as UI from 'Helix/UserInterface';
+import * as UI from './theme-ui.js';
 import * as Event from 'Helix/Event';
 import * as Engine from 'Helix/Engine';
 import * as Desktop from 'Module/desktop';
@@ -7,14 +7,21 @@ import * as Process from 'Module/process';
 import * as PAM from 'Module/pam';
 import * as Log from 'Helix/Log';
 import { createLockController } from './lock-model.js';
-import { clockPreferences, clockPresentation } from './clock-model.js';
+import { clockPreferences } from './clock-model.js';
 import { readSettings } from './settings-model.js';
-import { configureWallpaper, wallpaperSurface, resizeWallpaper } from './wallpaper-surface.js';
-import { windowLayout } from './window-layout.js';
+import { configureWallpaper } from './wallpaper-surface.js';
+import { authScreen, AUTH_CARD_WIDTH, AUTH_CARD_PADDING } from './auth-screen.js';
+import { userAvatar } from './user-avatar.js';
 import { passwordInput } from './password-input.js';
-import { text, button, children } from './touch-ui.js';
-import { surfaceCursor, destroySurface } from './cursor.js';
-import { CREAM, ORANGE, INK, MUTED, TYPE, SPACE } from './theme.js';
+import { text, button } from './touch-ui.js';
+import { destroySurface } from './cursor.js';
+import { presets } from './motion.js';
+import { TYPE, SPACE, TEXT, FONT_STRONG, SURFACE, configureTheme } from './theme.js';
+
+// The lock screen: the shared auth screen (wallpaper, clock, centred card)
+// with the person, their password, a status line and Unlock in the card.
+// The card shakes on a refusal.
+const AVATAR_SIZE = 40;
 
 export default function main() {
   setTimeout(() => build().catch(async () => {
@@ -26,6 +33,7 @@ export default function main() {
 async function build() {
   const user = Desktop.userName(), service = Process.getEnv('KOYA_PAM_SERVICE', 'login');
   const settings = readSettings(Desktop.loadPreferences());
+  await configureTheme(settings);
   await configureWallpaper(settings);
   let clockSettings = clockPreferences(settings);
   const screens = new Map();
@@ -48,84 +56,48 @@ async function build() {
     const checking = controller.submit(answer); answer = '';
     await Promise.all([updateInput(), updateAvailability()]);
     if (await checking) Engine.quit();
-    else await updateAvailability();
+    else {
+      for (const screen of screens.values()) screen.play(screen.card, presets.shake());
+      await updateAvailability();
+    }
   };
-  const formWidth = size => Math.max(40, Math.min(420, size.x - 40));
-  // timeWidth reserves room for the longest clock string at the bar's 14 px
-  // reference size. Scale that allowance to keep AM/PM and seconds in the form.
-  const timeSize = (size, view) => Math.min(TYPE.display, size.y / 8, formWidth(size) * 14 / view.timeWidth);
-  const paintClock = async () => {
-    const view = clockPresentation(new Date(), clockSettings);
-    const key = JSON.stringify([view.time, view.date, view.showDate]);
-    await Promise.all([...screens.values()].map(async screen => {
-      if (screen.clockKey === key) return;
-      await Promise.all([
-        UI.setTextString(screen.win, screen.timeLabel, view.time),
-        UI.setTextString(screen.win, screen.dateLabel, view.date),
-        UI.setEnabled(screen.win, screen.dateLabel, view.showDate),
-        UI.setTextSize(screen.win, screen.timeLabel, timeSize(screen.size, view))
-      ]);
-      screen.clockKey = key;
-    }));
-  };
+  const paintClock = () => Promise.all([...screens.values()].map(screen => screen.paintClock(clockSettings)));
   const add = async display => {
     const win = await Compositor.createWindow({ role: 'lock', display: display.display, msaaSamples: 1,
       transparent: false, keyboardInteractivity: 'exclusive', acceptPointerEvents: true });
     const info = await Compositor.getWindowInfo(win);
     if (info.role !== 'lock') throw new Error('A compositor lock surface is required');
     const size = { x: info.width, y: info.height };
-    const width = formWidth(size);
-    const view = clockPresentation(new Date(), clockSettings);
-    const [root] = await Promise.all([
-      UI.createElement(win, { renderable: { type: 'box', colour: INK }, layout: { type: 'none' }, item: { size }, contentAlign: 'fill', onHover: surfaceCursor(win) }),
-      Compositor.setClearColor(win, ...INK)
-    ]);
-    // Position the form column explicitly; cross-axis alignment uses its child widths.
-    const [wall, content] = await children(win, root, [
-      wallpaperSurface(win, size, [0.4, 0.45, 0.4, 1]),
-      UI.createElement(win, { layout: { type: 'column', gap: SPACE.m, justifyContent: 'center', alignItems: 'center' },
-        item: { position: { x: (size.x - width) / 2, y: 0 }, size: { x: width, y: size.y } } })
-    ]);
-    let unlockLabel, input;
-    const [timeLabel, dateLabel, userLabel, passwordBox, status, unlock] = await children(win, content, [
-      text(win, null, view.time, timeSize(size, view), width, Math.min(112, size.y / 6)),
-      text(win, null, view.date, TYPE.caption, width, 28, MUTED),
-      text(win, null, user, TYPE.heading, width, 48),
-      passwordInput(win, { width, height: 52, size: TYPE.body, disabled: true, textId: 'lock-password', id: 'lock-password-input',
-        onSubmit: submit, onInput: value => { password = value; updateInput(input).catch(() => {}); } })
-        .then(control => { input = control; return control.master.id; }),
-      text(win, null, message, TYPE.caption, width, 36, ORANGE),
-      button(win, null, 'Unlock', width, 48, submit, { colour: ORANGE, labelColour: INK, onLabel: id => { unlockLabel = id; } })
-    ]);
-    await Promise.all([
-      UI.attachRoot(win, root),
-      UI.setElementId(win, timeLabel, 'lock-clock'), UI.setElementId(win, dateLabel, 'lock-date'),
-      UI.setEnabled(win, dateLabel, view.showDate)
-    ]);
-    const screen = { win, root, content, wall, input, status, timeLabel, dateLabel, size,
-      clockKey: JSON.stringify([view.time, view.date, view.showDate]) };
-    screens.set(display.display, screen);
-    screen.stopLayout = windowLayout(win, async next => {
-      screen.size = next;
-      const width = formWidth(next);
-      await Promise.all([
-        UI.setLayoutSize(win, root, next), resizeWallpaper(win, wall, next),
-        UI.setLayoutSize(win, content, { x: width, y: next.y }),
-        UI.setLayoutPosition(win, content, { x: (next.x - width) / 2, y: 0 }),
-        UI.setLayoutSize(win, timeLabel, { x: width, y: Math.min(112, next.y / 6) }),
-        UI.setTextSize(win, timeLabel, timeSize(next, clockPresentation(new Date(), clockSettings))),
-        input.setSize({ x: width, y: 52 }),
-        ...[[dateLabel, 28], [userLabel, 48], [status, 36], [unlock, 48], [unlockLabel, 32]]
-          .map(([id, height]) => UI.setLayoutSize(win, id, { x: width, y: height }))
+    const inner = AUTH_CARD_WIDTH - AUTH_CARD_PADDING * 2;
+    // The card: avatar and name, the password, status and Unlock.
+    const cardHeight = AUTH_CARD_PADDING * 2 + AVATAR_SIZE + SPACE.l + 48 + SPACE.m + 28 + SPACE.s + 44;
+    let input, status, avatar, name;
+    const screen = await authScreen(win, { size, name: 'lock', cardHeight, clock: clockSettings, build: async card => {
+      const person = await UI.createElement(win, { layout: { type: 'row', gap: SPACE.m, alignItems: 'center' }, item: { size: { x: 'auto', y: AVATAR_SIZE }, margin: { t: 0, r: 0, b: SPACE.l - SPACE.s, l: 0 } } });
+      [avatar, name] = await Promise.all([
+        userAvatar(win, { size: AVATAR_SIZE, id: 'lock-avatar', onName: value => {
+          if (name) UI.setTextString(win, name, value || user).catch(() => {});
+        } }),
+        text(win, null, user, TYPE.heading, 'auto', 'auto', TEXT.primary, FONT_STRONG, 'left')
       ]);
-    });
+      await Promise.all([UI.attach(win, person, avatar.id), UI.attach(win, person, name), UI.setElementId(win, name, 'lock-name')]);
+      const passwordBox = await passwordInput(win, { width: inner, height: 48, size: TYPE.body, disabled: true, textId: 'lock-password', id: 'lock-password-input',
+        onSubmit: submit, onInput: value => { password = value; updateInput(input).catch(() => {}); } }).then(control => { input = control; return control.master.id; });
+      status = await text(win, null, message, TYPE.caption, inner, 28, TEXT.accent);
+      const unlock = await button(win, null, 'Unlock', inner, 44, submit, { colour: SURFACE.accent, labelColour: TEXT.onAccent, size: TYPE.body });
+      // Reading order made explicit (siblings sort by order, then creation).
+      for (const [index, id] of [person, passwordBox, status, unlock].entries()) { await UI.setLayoutOrder(win, id, index); await UI.attach(win, card.content, id); }
+    } });
+    screen.input = input; screen.status = status; screen.avatar = avatar;
+    screens.set(display.display, screen);
+    avatar.setUser(user);
     await updateInput();
     await updateAvailability();
   };
   const sync = async () => {
-    const displays = await Compositor.listDisplays(), names = new Set(displays.map(item => item.display));
+    const displays = await Compositor.listDisplays({ backend: 'wayland' }), names = new Set(displays.map(item => item.display));
     for (const [name, screen] of screens) if (!names.has(name)) {
-      screen.stopLayout(); screens.delete(name); await screen.input.destroy(); await destroySurface(screen.win);
+      screen.stop(); screens.delete(name); await Promise.all([screen.input.destroy(), screen.avatar.dispose()]); await destroySurface(screen.win);
     }
     for (const display of displays) if (!screens.has(display.display)) await add(display);
   };
@@ -150,7 +122,9 @@ async function build() {
     updating = true;
     try {
       if (await Compositor.sessionLockState() === 'finished') { Engine.quit(); return; }
-      clockSettings = clockPreferences(readSettings(Desktop.loadPreferences()));
+      const settings = readSettings(Desktop.loadPreferences());
+      await configureTheme(settings);
+      clockSettings = clockPreferences(settings);
       await sync();
       await paintClock();
     } catch (_) { Log.error('Lock screen could not update'); }

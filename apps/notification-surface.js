@@ -1,5 +1,5 @@
 import * as Compositor from 'Koya/Compositor';
-import * as UI from 'Helix/UserInterface';
+import * as UI from './theme-ui.js';
 import { clips } from './motion.js';
 import { RADIUS } from './theme.js';
 import { surfaceCursor, resetCursor, destroySurface } from './cursor.js';
@@ -49,7 +49,13 @@ export async function notificationSurface(display, namespace, size, offset, colo
       await done;
     } finally { clearTimeout(fallback); }
   };
-  return { win, root, size, get shown() { return shown; }, get closed() { return closed; },
+  // Grow or shrink in place (no hide/show); call inside paint().
+  const resize = async next => {
+    if (next.x === size.x && next.y === size.y) return;
+    await Promise.all([Compositor.resizeWindow(win, next.x, next.y), UI.setLayoutSize(win, root, next)]);
+    size.x = next.x; size.y = next.y;
+  };
+  return { win, root, size, resize, get shown() { return shown; }, get closed() { return closed; },
     prepare: () => hide(true), hide,
     show: async () => {
       shown = true;

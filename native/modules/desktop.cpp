@@ -1,6 +1,8 @@
 #include "module.hpp"
 #include "icons.hpp"
 #include "wallpapers.hpp"
+#include "avatars.hpp"
+#include "passwords.hpp"
 #include <gio/gdesktopappinfo.h>
 #include <memory>
 #include <atomic>
@@ -156,6 +158,19 @@ struct DesktopModule: NativeModule {
             if (job.kind == "wallpapers") result.json = wallpapers.list();
             else if (job.kind == "importWallpaper") { std::string error; result.json = wallpapers.import(job.argument, error); if (result.json.empty()) result.error = error; }
             else if (job.kind == "removeWallpaper") { if (wallpapers.remove(job.argument)) result.json = "true"; else result.error = "Cannot remove wallpaper"; }
+            else if (job.kind == "prepareAvatar") {
+                std::string error, path = Avatars::prepare(job.argument, error);
+                if (path.empty()) result.error = error; else result.json = quote(path.c_str());
+            }
+            else if (job.kind == "changePassword") {
+                // The argument is the current and new password, NUL-separated.
+                const size_t split = job.argument.find('\0');
+                Passwords::Outcome outcome = split == std::string::npos ? Passwords::Outcome{false, "Could not change the password", ""}
+                    : Passwords::change(job.argument.substr(0, split), job.argument.substr(split + 1));
+                result.json = std::string("{\"ok\":") + (outcome.ok ? "true" : "false") + ",\"message\":" + quote(outcome.message.c_str())
+                    + ",\"field\":" + quote(outcome.field.c_str()) + "}";
+                Passwords::erase(job.argument);
+            }
             else if (job.kind == "applications") result.json = applications();
             else if (job.kind == "resolveIcon") {
                 GIcon *icon = g_icon_new_for_string(job.argument.c_str(), nullptr);
@@ -192,10 +207,10 @@ struct DesktopModule: NativeModule {
         }), self);
         return JS_UNDEFINED;
     }
-    // Wallpaper jobs need no application state, so they start the worker on
+    // Image jobs need no application state, so they start the worker on
     // demand in apps that never call start().
     JSValue enqueue(const char *kind, std::string argument = "") {
-        const bool standalone = g_str_has_suffix(kind, "allpaper") || !strcmp(kind, "wallpapers");
+        const bool standalone = g_str_has_suffix(kind, "allpaper") || !strcmp(kind, "wallpapers") || !strcmp(kind, "prepareAvatar") || !strcmp(kind, "changePassword");
         if (!icons && !standalone) return JS_ThrowInternalError(js, "Desktop module is not started");
         if (!worker.joinable()) { ending = false; worker = std::thread([this] { run(); }); }
         if (promises.size() >= 128) return JS_ThrowInternalError(js, "Too many pending desktop requests");
@@ -216,8 +231,23 @@ extern "C" HELIX_PLUGIN_EXPORT int helix_plugin_integrate(JSContext *ctx, const 
         {"start", DesktopModule::start}, {"applications", [](NativeModule *base, int, JSValueConst *) { return static_cast<DesktopModule *>(base)->enqueue("applications"); }},
         {"launch", [](NativeModule *base, int argc, JSValueConst *argv) { if (argc != 1 || !JS_IsString(argv[0])) return JS_ThrowTypeError(base->js, "launch expects a desktop entry ID"); return static_cast<DesktopModule *>(base)->enqueue("launch", NativeModule::string(base->js, argv[0])); }},
         {"wallpapers", [](NativeModule *base, int, JSValueConst *) { return static_cast<DesktopModule *>(base)->enqueue("wallpapers"); }},
+        {"prepareAvatar", [](NativeModule *base, int argc, JSValueConst *argv) {
+            if (argc != 1 || !JS_IsString(argv[0])) return JS_ThrowTypeError(base->js, "prepareAvatar expects an image path or file URI");
+            return static_cast<DesktopModule *>(base)->enqueue("prepareAvatar", NativeModule::string(base->js, argv[0]));
+        }},
         {"importWallpaper", [](NativeModule *base, int argc, JSValueConst *argv) { if (argc != 1 || !JS_IsString(argv[0])) return JS_ThrowTypeError(base->js, "importWallpaper expects a path or file URI"); return static_cast<DesktopModule *>(base)->enqueue("importWallpaper", NativeModule::string(base->js, argv[0])); }},
         {"removeWallpaper", [](NativeModule *base, int argc, JSValueConst *argv) { if (argc != 1 || !JS_IsString(argv[0])) return JS_ThrowTypeError(base->js, "removeWallpaper expects a wallpaper ID"); return static_cast<DesktopModule *>(base)->enqueue("removeWallpaper", NativeModule::string(base->js, argv[0])); }},
+        {"changePassword", [](NativeModule *base, int argc, JSValueConst *argv) {
+            if (argc != 2 || !JS_IsString(argv[0]) || !JS_IsString(argv[1])) return JS_ThrowTypeError(base->js, "changePassword expects the current and new password");
+            std::string current = NativeModule::string(base->js, argv[0]), next = NativeModule::string(base->js, argv[1]);
+            if (current.empty() || next.empty() || current.size() > 512 || next.size() > 512 || current.find('\0') != std::string::npos || next.find('\0') != std::string::npos) {
+                Passwords::erase(current); Passwords::erase(next); return JS_ThrowRangeError(base->js, "Invalid password");
+            }
+            std::string argument = current + '\0' + next;
+            Passwords::erase(current); Passwords::erase(next);
+            JSValue promise = static_cast<DesktopModule *>(base)->enqueue("changePassword", argument);
+            Passwords::erase(argument); return promise;
+        }},
         {"resolveIcon", [](NativeModule *base, int argc, JSValueConst *argv) { if (argc != 1) return JS_ThrowTypeError(base->js, "resolveIcon expects a description"); return static_cast<DesktopModule *>(base)->enqueue("resolveIcon", NativeModule::string(base->js, argv[0])); }}};
     if (self->integrate(name, host, out)) return 0;
     delete self; return 1;

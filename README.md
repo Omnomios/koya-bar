@@ -1,330 +1,256 @@
 # Koya Desktop Shell
 
-A desktop adaptation of the phone-first interface in `../koya-shell`. It uses
-Koya's green surfaces, cream text, orange accents, Inter fonts, artwork and
-animations, with separate apps for launching applications, settings, Wi-Fi and
-locking the session.
+A Wayland desktop shell and login greeter built with [Koya](https://www.koya-ui.com/).
+Designed for Hyprland on GNU/Linux, this project demonstrates Koya with a
+desktop bar, application picker, account app, settings, Wi-Fi controls and
+session locking.
 
-The status shell provides a top bar with clock, network and laptop battery
-status, volume controls and notifications. Notifications include banners,
-actions, dismissal and history. The compact notification panel opens on the
-clicked monitor. Each monitor gets a wallpaper and top bar.
-There is no bottom bar or desktop picker; Hyprland controls normal window and
-workspace behavior.
+The bar provides workspaces, a clock, network and battery status, volume
+controls and notifications. Every connected monitor gets its own bar and
+wallpaper. Hyprland manages application windows and workspaces.
 
-Every interactive surface sets its cursor explicitly: the default arrow on
-backgrounds, a hand on buttons and actionable rows, a text cursor on input
-fields, and a horizontal resize cursor on the volume slider. Captured dragging
-keeps its cursor until release or cancellation; hiding or closing a popup
-restores the arrow. Touch interactions do not change the mouse cursor.
+## Requirements
 
-The top bar's fish icon is derived from the official Koya brochure artwork.
-Its transparent orange-and-cream treatment is generated for small-size display;
-the reference and generation prompt are in `assets/brand/koya-fish.prompt.txt`.
+- Installed Koya **0.7.1 or newer**, its shared assets, and matching Helix
+  `dbus`, `hypr` and `process` plugins. Session locking also needs `pam`.
+- A working Hyprland session and Vulkan driver.
+- Meson, Ninja, a C++17 compiler, pkg-config and the `gio-unix-2.0` development
+  library to build this project's native modules.
+- GdkPixbuf and its image loaders; librsvg for SVG icons.
+
+Install the services for the features you use:
+
+| Feature | Service or tool |
+| --- | --- |
+| Network and Wi-Fi | NetworkManager and a session polkit agent |
+| Battery and charge control | UPower |
+| Power modes | power-profiles-daemon |
+| Audio | PulseAudio or PipeWire's PulseAudio server, with `pactl` |
+| Account profiles | AccountsService (`accountsservice` on Arch) |
+| Image chooser | xdg-desktop-portal and a file-chooser backend, such as GTK |
+| Login greeter | greetd |
+| SSH prompts | OpenSSH and an existing ssh-agent |
+| Idle locking | hypridle |
 
 ## Run
 
-Use Koya **0.6.0 or newer** and matching Helix `dbus`, `hypr` and `process` plugins.
-The lock app also requires the `pam` plugin and compositor session-lock support.
-The DBus plugin must provide explicit `session` and `system` handles and directed
-notification signals. A Linux Wayland session, Hyprland and Vulkan drivers are
-required.
-
-Install Meson, Ninja, a C++17 compiler and the `gio-unix-2.0` development library,
-then run:
-
 ```bash
-KOYA_BIN=/path/to/koya \
-KOYA_PLUGIN_DIR=/path/to/plugins \
-KOYA_ASSET_DIR=/path/to/koya/assets \
+git clone https://github.com/Omnomios/koya-bar.git
+cd koya-bar
 ./run.sh
 ```
 
-When Koya and its plugins are installed in standard locations, the environment
-variables can be omitted. `KOYA_ASSET_DIR` is optional when Koya supplies its
-shared assets. The runner builds the native desktop-entry, icon and settings
-plugin in `build/`. Use the same environment variables for the app commands below.
+The runner uses installed Koya and builds this project's native modules into
+`build/`. For a nonstandard installation, set `KOYA_BIN`,
+`KOYA_ASSET_DIR` and `KOYA_PLUGIN_DIR` to the executable, matching shared assets
+and plugins. Assets default to `../share/koya/assets` relative to the executable.
 
-To start the status shell with Hyprland, add an `exec-once` entry for the absolute
-path to `run.sh`. Run one instance per session and stop any existing bar or
-wallpaper service to avoid overlapping surfaces.
+Add the absolute path to `run.sh` to Hyprland's startup commands. Run one shell
+per session and stop any existing bar or wallpaper service before starting it.
 
-Settings, Wi-Fi, the launcher, popups and banners are centred or anchored
-layer-shell overlays with translucent surfaces; they do not paint the
-wallpaper themselves. Enable Hyprland's blur behind them with a layer rule
-(without one they stay nearly opaque):
-
-```
-layerrule = blur, ^koya-
-layerrule = ignorezero, ^koya-
-```
-
-Settings adds wallpapers through the desktop portal's file chooser. Overlays
-stack above every window, so Settings hides while the chooser is open; float
-the chooser so it opens as a dialog rather than a tile:
-
-```
-windowrule = float, class:^(xdg-desktop-portal-gtk)$
-```
-
-NetworkManager supplies network status and Wi-Fi configuration; UPower supplies
-battery status. The battery indicator is hidden on desktops without a battery.
-PulseAudio or PipeWire's PulseAudio compatibility server and `pactl` supply
-volume controls. Network changes use your session's existing polkit agent.
-
-## Replace `rofi -show drun`
-
-Run the standalone application picker:
+The standalone apps are:
 
 ```bash
-./launcher.sh
+./launcher.sh     # Application picker
+./settings.sh     # Theme, wallpaper and clock
+./account.sh      # Profile, password and sign-in options
+./wifi.sh         # Wireless networks
+./lock.sh         # Lock the session
 ```
 
-Replace your existing rofi binding with the absolute launcher path, for example:
-
-```ini
-bind = SUPER, D, exec, /home/user/projects/koya-bar/launcher.sh
-```
-
-The picker opens on the focused monitor. Type to filter installed `.desktop`
-entries by application name, generic name, keywords, descriptions or executable.
-Search ignores case and accents, and accepts fuzzy matches. Use **Up/Down** or
-**Tab** to select, **Page Up/Down** to move through results, **Enter** to launch,
-and **Escape** to close. Click a result to launch it with the mouse.
-
-**Left/Right**, **Home/End**, **Backspace** and **Delete** edit the query.
-**Ctrl+U** clears it, **Ctrl+W** removes the previous word, and **Ctrl+A/Ctrl+E**
-move to the start/end. Your desktop input method supplies text composition.
-
-The picker respects desktop visibility and `TryExec`, includes terminal entries,
-and launches through GIO's standard desktop-entry handling, including Exec field
-codes and DBus activation. It does not switch, allocate or reserve workspaces.
-Icon rendering happens for visible results so discovery does not wait for every
-installed icon. A second invocation while the picker is open is ignored.
-
-## Settings and Wi-Fi desktop entries
-
-Meson generates regular `build/koya-settings.desktop` and
-`build/koya-wifi.desktop` files. The picker discovers them in this checkout. To
-make them available to other launchers and desktop menus, install them:
+To add Account, Koya Settings and Koya Wi-Fi to other launchers and desktop
+menus, run:
 
 ```bash
 ./install-desktop-entries.sh
 ```
 
-The installer writes to `${XDG_DATA_HOME:-~/.local/share}/applications`, or to the
-directory supplied as its first argument. Entries use absolute paths to this
-checkout; rerun the installer after moving it. They invoke `settings.sh` and
-`wifi.sh`, which launch ordinary desktop windows.
+The installer writes to `${XDG_DATA_HOME:-~/.local/share}/applications`, or its
+first argument. Entries refer to this checkout; rerun it after moving the repo.
+Koya's picker also discovers the generated entries directly in `build/`.
 
-The default wallpaper is a copy of Waypaper's current selection,
-`Nocturne-of-Steel-and-Glass.png`. Settings also offers the four phone-shell
-wallpapers. Changes apply
-immediately and are saved atomically in
+The bar and apps use layer-shell surfaces. Configure Hyprland's blur for
+namespaces beginning with `koya-` if desired. Float the desktop portal's file
+chooser so it opens as a dialog. Settings and Account release their input and
+hide while the chooser or an authorization prompt is open.
+
+## Settings
+
+**Theme** opens the theme editor. Edit the base palette and individual surfaces,
+text, borders, dividers, highlights, status colours and shadows. The colour
+picker supports HSV, RGBA and hex. The preview follows the draft; **Save theme**
+applies it to open shell apps. Unsaved drafts survive page navigation and are
+discarded when Settings closes. Invalid or unreadable drafts cannot be saved.
+
+**Wallpaper** offers bundled artwork and an image chooser for your own files.
+**Show on login screen** shares the selected wallpaper with the greeter for
+this account. Imported images are cached and only the selected rendered image
+is copied to the greeter's cache.
+
+**Date & time** controls 24/12-hour time, date visibility and seconds. Dates use
+ISO `YYYY-MM-DD` format. The bar and lock screen use the same saved options.
+
+Preferences are saved atomically to
 `${XDG_CONFIG_HOME:-~/.config}/koya-bar/settings.json`.
 
-The top bar shows local time followed by the local date in ISO `YYYY-MM-DD`
-format. Settings → Date & time offers 24/12-hour time, show date and show
-seconds. Defaults are 24-hour time, date visible and seconds hidden. The top bar,
-Settings previews and lock screen use the same format and local calendar on every
-output. Changes apply immediately to the bar; the independent lock app reads the
-saved settings on startup and refreshes them while locked.
+## Account
 
-The top bar's speaker reflects the default audio output's volume and mute
-status, including changes made with keyboard shortcuts. Click it to open a
-horizontal 0–100% slider beneath the icon on that monitor. Click or drag the
-slider to set the volume; click the speaker inside the popup to toggle mute.
-Choosing a nonzero volume also unmutes. Click outside or press Escape to close.
-Volume has no customization options. Notifications stay in
-memory until the status shell exits.
+The separate Account app edits the current user's AccountsService profile.
+Choose a picture, edit your display name and email, or open the password page.
+Images are centred, cropped to a square and converted to a 256px PNG. The
+greeter and lock screen follow profile changes and fall back to initials when
+no image is available. Authentication always uses the login name.
 
-Notifications sit at the top-right beneath the bell, 300 px wide, with a 10 px
-inset from the right edge and below the bar. Banners shrink to fit up to a maximum height of 100 px and up to
-five are shown together, with a five-second display timeout. The bell opens a
-compact history panel in the same position, with actions, dismissal, clear-all
-and paging. Press Escape or click its close button to dismiss the panel.
+Password changes run through `passwd` on a private terminal. The app reports
+the system's refusal and clears password fields after use. Automatic login
+requires the greeter installation below and administrator authorization.
 
-Click the network icon in the bar for the current connection summary. It shows
-Internet connectivity, connection name, interface and IP addresses, plus Wi-Fi
-signal and security when available. The summary updates as the connection
-changes. **Configure Wi-Fi** opens the existing Wi-Fi app for scanning, joining,
-disconnecting and managing saved networks. Click outside or press Escape to
-close the summary. Network information is separate from notifications.
+## Bar controls
 
-## SSH keys on first use
+- **Network:** connection summary, addresses and connectivity; **Configure
+  Wi-Fi** opens the Wi-Fi app for joining and managing saved networks.
+- **Battery:** status, time estimates, power rate, energy, health and cycles.
+  Supported batteries get an individual charge-control switch using UPower's
+  configured preset. Available power modes come from power-profiles-daemon.
+- **Audio:** click the speaker for volume and mute controls. The slider follows
+  the default output and external volume changes.
+- **Notifications:** banners and history with actions, dismissal and clear-all.
+  History remains in memory until the shell exits.
 
-Koyabar starts a small socket proxy for the existing OpenSSH agent. It discovers
-matching private key and `.pub` files directly inside `~/.ssh`, advertises their
-public keys, and runs `ssh-add` when a client first requests a signature with an
-unloaded key. Koya shows a centered, masked passphrase dialog; Enter or **Unlock**
-submits, and Escape or **Cancel** cancels that request. Wrong passphrases can be
-retried. Simultaneous requests for the same key share its initial load.
+Controls for unavailable hardware or services are omitted. System changes use
+the corresponding service's existing authorization policy.
 
-The encrypted originals stay in `~/.ssh`. Only `ssh-add` reads/decrypts them;
-unlocked keys live in the existing OpenSSH agent's memory. Koya creates no key
-or passphrase database and saves no passphrases. Already loaded keys retain
-their lifetime, confirmation and destination restrictions. A removed or expired
-key can prompt again on its next use. The proxy scans again as keys change.
+## Application picker
 
-Configure Hyprland to send SSH clients through the proxy, keeping the upstream
-socket separate:
+Bind `launcher.sh` to your preferred Hyprland shortcut to replace a launcher
+such as `rofi -show drun`. Type to search desktop entries by name, keywords,
+description or executable; matching ignores case and accents.
 
-```lua
-hl.env("KOYA_SSH_UPSTREAM", os.getenv("XDG_RUNTIME_DIR") .. "/ssh-agent.socket")
-hl.env("SSH_AUTH_SOCK", os.getenv("XDG_RUNTIME_DIR") .. "/koya-ssh/agent.sock")
-local sshAgent = koyaRoot .. "/ssh-add.sh"
-```
+Use Up/Down or Tab to select, Page Up/Down to move through results, Enter to
+launch, and Escape to close. Left/Right, Home/End, Backspace and Delete edit the
+query; Ctrl+U clears it, Ctrl+W removes a word and Ctrl+A/Ctrl+E move to either
+end. Input methods supply text composition. A second invocation is ignored
+while the picker is open.
 
-Keep the existing OpenSSH agent service/socket enabled. Ensure shell startup
-files retain the proxy address rather than resetting it to the upstream socket.
-After changing session configuration, restart Koyabar and open a new terminal
-with the proxy `SSH_AUTH_SOCK`. Existing applications retain their old environment.
-All agent-backed requests through the proxy, including requests for already
-loaded keys, require Koyabar to be running. Closing the shell stops the proxy and
-leaves OpenSSH and its loaded keys running, but the proxy socket is unavailable
-until Koyabar starts again. Terminals can be launched directly by Hyprland; they
-reach the proxy through the inherited socket address rather than their parent
-process. Closing Koyabar does not terminate those terminals or their SSH connections.
+Applications launch through GIO's desktop-entry handling, including terminal
+entries, Exec field codes and D-Bus activation.
 
-For a manual load (including keys elsewhere), use `./ssh-add.sh [ssh-add options
-or key paths]`. With no arguments it loads OpenSSH's usual default keys; Super+U
-can invoke this command. It forces Koya askpass even when launched from a
-terminal. Ordinary `ssh-add` can still be used for terminal prompts and key
-administration through the proxy. Lock/unlock the agent through the proxy so it
-can suppress automatic loading while locked; locks performed directly on the
-upstream socket or before starting the proxy cannot be detected by this protocol.
+## Login greeter
 
-Only paired files directly in `~/.ssh` are discovered automatically; custom
-`IdentityAgent` settings and applications pointing at a different socket bypass
-Koya. SSH options controlling which identities are offered still apply.
+The greeter discovers installed Wayland sessions and asks greetd to authenticate
+and start the selected session. After logout, greetd shows the greeter again.
+Configure the chosen desktop session to start `run.sh` itself.
 
-The proxy and askpass sockets are private to the current user under
-`$XDG_RUNTIME_DIR/koya-ssh/`. Prompts travel over the backend's private stdout
-pipe, answers over its stdin pipe. Disconnects, cancellation and shell exit
-unblock outstanding requests. No GNOME keyring, GCR or GnuPG key store is used;
-the helper uses the GIO library already required by the desktop plugin.
-
-## Lock from hypridle
-
-Run the lock app with:
+Build the native modules, then install from a checkout that will remain
+accessible before login:
 
 ```bash
-./lock.sh
+meson setup build             # --reconfigure if already configured
+meson compile -C build
+sudo ./install-greeter.sh
 ```
 
-The app creates compositor session-lock surfaces for every output, follows
-output changes and authenticates the current Unix account through PAM. Enter
-your password and press Enter or click Unlock. Escape clears the field. It
-releases the compositor lock only after PAM confirms authentication and the
-compositor still reports a confirmed lock. It runs independently of the status
-shell and Settings.
+The installer enables greetd at boot and configures tty1. It installs the
+launcher, native modules and automatic-login helpers under `/usr/local`, saves
+the previous greetd configuration as `/etc/greetd/config.toml.before-koya`, and
+links `/usr/local/share/koya-greeter` to this checkout. JavaScript and assets
+remain in the repo for development; rerun the installer after native changes.
+System plugins load from their installed locations.
 
-`KOYA_PAM_SERVICE` selects the PAM service; the default is `login`, which checks
-both authentication and account policy. A custom service must include both
-`auth` and `account` rules. The existing `hyprlock` PAM file on some systems has
-only `auth` rules and is insufficient for this plugin's account check.
+Log out of the desktop before starting the service, for example from SSH:
 
-Meson generates `build/hypridle.example.conf` with this checkout's absolute lock
-command. Merge its `lock_cmd`, sleep hook and idle listener into your existing
-hypridle configuration, keeping your preferred DPMS behavior. The example uses
-`loginctl lock-session` so hypridle invokes `lock.sh` for both idle and logind
-lock requests. Run hypridle normally in your graphical session. Repeated lock
-requests use a process lock to avoid competing lock applications.
+```bash
+sudo systemctl start greetd
+```
+
+The raw greeter runs as root for DRM, input-device and VT access. greetd starts
+the desktop as the authenticated user. Escape or Back cancels authentication;
+secret prompts stay masked. The last account and its opted-in wallpaper are
+recalled, and AccountsService supplies its last selected session.
+
+The Account app's **Automatic** switch uses polkit to record automatic login
+in `/etc/koya-greeter/autologin`. The installed greetd wrapper builds its runtime
+configuration under `/run/koya-greeter/` and adds an initial session for that
+account. greetd starts it once at boot; signing out returns to the greeter.
+
+For a preview inside an existing desktop, without real authentication:
+
+```bash
+koya -m /usr/share/koya/assets -m . -n build/native/modules -i demos/login-window-preview.js
+```
+
+Use any user name and the preview password `koya`. Escape exits the preview.
+For raw output, use `sudo ./greeter.sh --preview --raw-tty /dev/tty3` from that
+active, available VT. `KOYA_GREETER_WALLPAPER` selects the system wallpaper by
+built-in id; `KOYA_GREETER_STATE_DIR` overrides `/var/lib/koya-greeter`.
+
+## Session locking
+
+`lock.sh` creates compositor session-lock surfaces on every output and checks
+the current account through PAM. It releases the lock only after authentication
+and confirmation that the compositor still owns the lock. Escape clears the
+password. Locking works independently of the status shell.
+
+Merge `build/hypridle.example.conf` into your existing hypridle configuration
+for idle, sleep and logind lock requests. `KOYA_PAM_SERVICE` selects the PAM
+service; the default is `login`. A custom service needs both authentication and
+account-policy rules.
+
+## SSH keys
+
+The shell provides a proxy for an existing OpenSSH agent. It discovers paired
+private and `.pub` files directly in `~/.ssh`, advertises the public keys and
+asks for a passphrase on first use. Only `ssh-add` decrypts the private key;
+unlocked keys remain in the upstream agent's memory. No passphrases are saved.
+
+Configure the desktop session's environment before launching SSH clients:
+
+```bash
+export KOYA_SSH_UPSTREAM="$XDG_RUNTIME_DIR/ssh-agent.socket"
+export SSH_AUTH_SOCK="$XDG_RUNTIME_DIR/koya-ssh/agent.sock"
+```
+
+Set the upstream path to your existing agent's socket and keep its service
+enabled. Clients must inherit the proxy address; open new terminals after
+changing it. Loaded keys retain their confirmation, lifetime and destination
+restrictions. Lock and unlock through the proxy so it can track agent locking.
+
+`./ssh-add.sh [options or key paths]` opens a Koya passphrase prompt for manual
+loads. Ordinary `ssh-add` remains available for terminal prompts. Keys outside
+`~/.ssh` need a manual load; custom `IdentityAgent` settings bypass this proxy.
+Closing Koya leaves the upstream agent running but makes the proxy unavailable
+until the shell starts again.
 
 ## Develop and test
 
-UI and controllers live in `apps/`, visual assets in `assets/`, and native
-integration in `native/modules/`. `index.js` starts the status shell. The original
-artwork and fonts remain in `image/` and `font/` as optional assets; the demo's
-bar, workspace strip and Day.js code have been removed. The notification and
-Wi-Fi interfaces, shared controls, fonts and artwork were
-adapted from the local `koya-shell` checkout. The bundled Inter license is in
-`assets/fonts/OFL-Inter.txt`.
+UI code is in `apps/`, artwork in `assets/`, and native modules in
+`native/modules/`. Plugin SDK headers are bundled in `native/sdk/`.
 
-Password fields in Wi-Fi, the lock screen and the SSH prompt use Koya's standard
-`InputText` control with `password: true`. The shell supplies the visuals; the
-standard control owns caret blinking, focus, Unicode editing, arrow/Home/End
-navigation, deletion, paste and horizontal scrolling. Password mode masks both
-committed and composing text, suppresses clipboard copy/cut and never supplies
-surrounding text to input methods. Wi-Fi's explicit Show action retains those
-privacy rules. Submitted SSH/lock values and destroyed controls are cleared.
-
-Development runs automatically mount `../helix/koya-base/assets` when
-`KOYA_ASSET_DIR` is unset. Other installations should supply matching standard
-assets with password-enabled `InputText` through `KOYA_ASSET_DIR` or the runtime's
-packaged assets.
-
-UI calls cross from the script thread to the render thread. Queue independent
-creation, setup and animation calls with `Promise.all`, then await the batch
-before using its returned element or animation ids. Shared controls accept
-`null` as their parent to build detached; `children()` builds siblings together
-and queues their attachments in authored order, preserving layout and drawing
-order even when promises finish in a different order. Keep text measurement
-after text updates, and retain rendering and input lifecycle ordering.
-
-Run model, SSH prompt queue, launcher editing, lock-policy, cursor lifecycle and UI batching tests:
+Run the focused login, locking, account and SSH-prompt checks with Node.js:
 
 ```bash
 npm test
 ```
 
-The UI batching test runs the real builders against a simulated native queue
-with replies delivered in reverse order. It checks dependency batches and
-element order across the bar, popups, notifications, launcher, Settings,
-Wi-Fi, lock form and SSH passphrase dialog without opening windows or authenticating.
-
-Build and run isolated native integration tests:
+For native integration checks:
 
 ```bash
 meson setup build
 meson compile -C build
 meson test -C build
-KOYA_BIN=/path/to/koya KOYA_PLUGIN_DIR=/path/to/plugins bash tests/run.sh
+./tests/run.sh
 ```
 
-The SSH proxy test creates an isolated OpenSSH agent and newly generated encrypted
-fixture keys. It checks real signature verification, first use, retries, cancellation,
-concurrent requests, retained confirmation restrictions, agent locking and shutdown.
-It never uses the session agent or personal keys.
+Native checks cover the SSH proxy, password changes, greetd handoff, automatic
+login, charge-control writes and privileged greeter file handling. They use
+disposable keys, an isolated agent, a private D-Bus and temporary settings and
+sockets.
 
-The other native tests use a private DBus and temporary XDG directories. They exercise
-native desktop-entry discovery and launches, metadata, icon caching, settings
-persistence, notification calls and network connection updates without changing
-desktop settings. A
-simulated audio server checks volume, mute, channel balance, output changes
-and subscription updates. Lock
-policy tests use simulated authentication; they do not submit real passwords.
+`raw-unlock-demo.sh` is a password-screen demo for an active, available VT. It
+does not unlock LUKS or change boot configuration. Its demo password is `koya`.
 
-For a rendering check with a working headless Hyprland backend and GPU:
+## Licence
 
-```bash
-KOYA_BIN=/path/to/koya bash tests/render.sh
-```
-
-This exercises picker keyboard input and writes `.work/launcher.png`.
-
-## Koya 0.6.0 input migration
-
-The shell uses virtual mouse/touch interactions: `onActivate` for clicks and
-taps, `onPress` for visual held state, and `onDrag` for captured slider movement.
-Each held interaction is tracked by its opaque `interactionId`. Releasing one
-contact preserves another held contact, and `cancel` clears feedback without
-running an action. The volume slider continues outside its bounds, clamps to
-0–100%, and ignores canceled or destroyed interactions. Keyboard and text input
-continue to use their existing event APIs.
-
-The runner rejects Koya versions older than 0.6.0. Read the source migration
-guide in `../helix/koya-base/docs/json/migration-0.5.0-to-0.6.0.json` when updating
-additional controls. The desktop plugin does not use the removed native mouse
-callbacks; its bundled plugin ABI and QuickJS headers still match this source.
-
-To rebuild the local runtime at the path used by the Hyprland configuration:
-
-```bash
-meson setup --reconfigure .work/koya-build ../helix \
-  -Dkoya_version=0.6.0 -Dbuild_koya=true -Dbuild_syncromesh=false \
-  -Dplugins=dbus,hypr,process,pam
-meson compile -C .work/koya-build
-KOYA_BIN="$PWD/.work/koya-build/koya-base/koya" \
-KOYA_PLUGIN_DIR="$PWD/.work/koya-build/helix-plugin" ./run.sh
-```
+Project material is released under Creative Commons Attribution 4.0
+International; see [LICENSE](LICENSE) and [NOTICE](NOTICE). The bundled Inter
+fonts and QuickJS header retain their original licences.

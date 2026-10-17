@@ -1,11 +1,11 @@
-import * as UI from 'Helix/UserInterface';
+import * as UI from './theme-ui.js';
 import * as Hypr from 'Module/hypr';
 import * as Log from 'Helix/Log';
 import { button, text } from './touch-ui.js';
-import { FONT_STRONG, INK, CREAM, MUTED, ORANGE, alpha, BAR, AUTO } from './theme.js';
+import { FONT_STRONG, BAR, AUTO, CLEAR, TEXT, SURFACE, HIGHLIGHT } from './theme.js';
 
 // Hyprland workspaces on one monitor, for the top bar: a numbered cell per
-// workspace (cream when it has windows, muted when empty) with an orange pill
+// workspace (primary text when occupied, secondary when empty) with an accent pill
 // behind the active number.
 //
 // Layout places everything. Cells are full-height buttons placed directly in
@@ -14,12 +14,12 @@ import { FONT_STRONG, INK, CREAM, MUTED, ORANGE, alpha, BAR, AUTO } from './them
 // a face that fills it less margins that put it on the strip, and the pill
 // and label both fill the face. On a switch the new cell's pill appears and
 // glides in from the old cell's measured position, coming to rest at zero.
-const CELL = 26, GAP = 2, INSET = 4, PILL = BAR.height - INSET * 2;
-const EVENTS = ['workspacev2', 'createworkspacev2', 'destroyworkspacev2', 'focusedmonv2', 'moveworkspacev2',
+const CELL_WIDTH = 26, CELL_GAP = 2, PILL_INSET = 4, PILL_HEIGHT = BAR.height - PILL_INSET * 2;
+const WORKSPACE_EVENTS = ['workspacev2', 'createworkspacev2', 'destroyworkspacev2', 'focusedmonv2', 'moveworkspacev2',
   'openwindow', 'closewindow', 'movewindowv2'];
 
 // Layout for the row the caller provides.
-export const WORKSPACE_ROW = { type: 'row', justifyContent: 'center', gap: GAP };
+export const WORKSPACE_ROW = { type: 'row', justifyContent: 'center', gap: CELL_GAP };
 
 export function createWorkspaces(win, monitor) {
   let container, cells = [], shape = '', active, shown, disposed = false, queue = Promise.resolve(), timer;
@@ -34,7 +34,7 @@ export function createWorkspaces(win, monitor) {
   };
   const paint = async animate => {
     const next = cells.find(cell => cell.id === active), previous = cells.find(cell => cell.id === shown);
-    await Promise.all(cells.map(cell => UI.setTextColour(win, cell.label, cell === next ? INK : cell.windows ? CREAM : MUTED)));
+    await Promise.all(cells.map(cell => UI.setTextColour(win, cell.label, cell === next ? TEXT.onAccent : cell.windows ? TEXT.primary : TEXT.secondary)));
     if (next === previous) return;
     shown = next?.id;
     // Measure before swapping, so the glide starts exactly over the old pill.
@@ -57,16 +57,19 @@ export function createWorkspaces(win, monitor) {
     shown = undefined;
     cells = await Promise.all(list.map(async workspace => {
       let face;
-      const target = await button(win, null, '', CELL, 'auto', () => focus(workspace.id), {
-        colour: [0, 0, 0, 0], hover: alpha(CREAM, 0.08), hoverTarget: () => face, element: { layout: { type: 'none' } } });
-      face = await UI.createElement(win, { renderable: { type: 'box', colour: [0, 0, 0, 0], cornerRadius: PILL / 2, cornerResolution: 16 },
-        layout: { type: 'none' }, item: { size: AUTO, margin: { t: BAR.top + INSET, r: 0, b: INSET, l: 0 } }, contentAlign: 'fill' });
-      const pill = await UI.createElement(win, { renderable: { type: 'box', colour: ORANGE, cornerRadius: PILL / 2, cornerResolution: 16 },
-        item: { size: AUTO }, contentAlign: 'fill' });
-      const label = await text(win, null, workspace.name, 12, 'auto', 'auto', MUTED, FONT_STRONG);
+      const [target, background, pill, label] = await Promise.all([
+        button(win, null, '', CELL_WIDTH, 'auto', () => focus(workspace.id), {
+          colour: CLEAR, hover: HIGHLIGHT.hover, hoverTarget: () => face, element: { layout: { type: 'none' } } }),
+        UI.createElement(win, { renderable: { type: 'box', colour: CLEAR, cornerRadius: PILL_HEIGHT / 2, cornerResolution: 16 },
+          layout: { type: 'none' }, item: { size: AUTO, margin: { t: BAR.top + PILL_INSET, r: 0, b: PILL_INSET, l: 0 } }, contentAlign: 'fill' }),
+        UI.createElement(win, { renderable: { type: 'box', colour: SURFACE.accent, cornerRadius: PILL_HEIGHT / 2, cornerResolution: 16 },
+          item: { size: AUTO }, contentAlign: 'fill' }),
+        text(win, null, workspace.name, 12, 'auto', 'auto', TEXT.secondary, FONT_STRONG)
+      ]);
+      face = background;
       await Promise.all([UI.attach(win, target, face), UI.attach(win, face, pill), UI.attach(win, face, label),
-        UI.setEnabled(win, pill, false), UI.setHitTarget(win, pill, false), UI.setElementId(win, target, 'workspace-' + workspace.id)]);
-      await UI.attach(win, container, target);
+        UI.setEnabled(win, pill, false), UI.setHitTarget(win, pill, false), UI.setElementId(win, target, 'workspace-' + workspace.id),
+        UI.attach(win, container, target)]);
       return { id: workspace.id, windows: workspace.windows, target, face, pill, label };
     }));
   };
@@ -89,9 +92,9 @@ export function createWorkspaces(win, monitor) {
     if (immediate === true) run(); else timer = setTimeout(run, 30);
   };
   const changed = () => refresh();
-  for (const name of EVENTS) Hypr.on(name, changed);
+  for (const name of WORKSPACE_EVENTS) Hypr.on(name, changed);
   return {
-    // `row`: a full-width row with justifyContent 'center' and gap GAP
+    // `row`: a full-width row with justifyContent 'center' and gap CELL_GAP
     // (see WORKSPACE_ROW); the cells become its children.
     build: async row => {
       container = row;
@@ -103,6 +106,6 @@ export function createWorkspaces(win, monitor) {
       };
       setTimeout(first, 0);
     },
-    dispose: () => { disposed = true; clearTimeout(timer); for (const name of EVENTS) Hypr.off(name, changed); }
+    dispose: () => { disposed = true; clearTimeout(timer); for (const name of WORKSPACE_EVENTS) Hypr.off(name, changed); }
   };
 }

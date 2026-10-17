@@ -1,6 +1,7 @@
 import * as Compositor from 'Koya/Compositor';
 import * as Log from 'Helix/Log';
 import { createCursorState } from './cursor-model.js';
+import { forgetWindow } from './theme-ui.js';
 
 const windows = new Map();
 function cursorFor(win) {
@@ -57,5 +58,6 @@ export const resetCursor = win => windows.get(win)?.reset() || Promise.resolve()
 export async function destroySurface(win) {
   const cursor = windows.get(win);
   if (cursor) await cursor.dispose();
+  forgetWindow(win);
   return Compositor.destroyWindow(win);
 }

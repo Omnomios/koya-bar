@@ -1,7 +1,7 @@
-import * as UI from 'Helix/UserInterface';
+import * as UI from './theme-ui.js';
 import * as Image from 'Koya/Image';
 import * as Log from 'Helix/Log';
-import { SHADOW, RADIUS } from './theme.js';
+import { SHADOW, RADIUS, SHADOW_COLOUR } from './theme.js';
 
 // Drop shadows are authored, not an engine effect: one rounded box is
 // rendered to a texture and blurred once per window and level, then drawn as
@@ -12,6 +12,7 @@ import { SHADOW, RADIUS } from './theme.js';
 // keeping slice values (texture pixels) equal to logical pixels; a shadow is
 // soft anyway. Textures belong to one window's renderer, so the cache is per
 // window.
+// Render a white alpha mask so a skin can recolour its panel tint in place.
 const textures = new Map();
 // Two blur passes reach about 2 × radius, so the padding holds the falloff
 // and the slices sit where alpha has settled: corners and edges carry the
@@ -25,7 +26,7 @@ function texture(win, level, radius) {
   const key = win + ':' + level + ':' + radius;
   if (!textures.has(key)) textures.set(key, (async () => {
     const { spec, pad, core, size } = geometry(level, radius);
-    const shape = await UI.createElement(win, { renderable: { type: 'box', colour: [0, 0, 0, 1], cornerRadius: radius, cornerResolution: 16,
+    const shape = await UI.createElement(win, { renderable: { type: 'box', colour: [1, 1, 1, 1], cornerRadius: radius, cornerResolution: 16,
       aabb: { min: { x: pad, y: pad }, max: { x: pad + core, y: pad + core } } },
       item: { size: { x: size, y: size } }, contentPositioning: 'raw' });
     try {
@@ -47,7 +48,7 @@ export async function shadow(win, parent, size, position, level = 'popover', rad
     const drawn = { x: size.x + pad * 2, y: size.y + pad * 2 };
     const id = await UI.createElement(win, {
       renderable: { type: 'panel', mode: 'sliced', texture: await texture(win, level, radius),
-        frame: { size: drawn, origin: { x: 0, y: 0 }, aabb: { min: { x: 0, y: 0 }, max: { x: extent, y: extent } }, colour: [1, 1, 1, spec.alpha] },
+        frame: { size: drawn, origin: { x: 0, y: 0 }, aabb: { min: { x: 0, y: 0 }, max: { x: extent, y: extent } }, colour: SHADOW_COLOUR[level] },
         slice: { top: slice, right: slice, bottom: slice, left: slice }, origin: { x: 0.5, y: 0 } },
       // Siblings draw in (order, creation) order, not attach order: sort first.
       item: { position: { x: position.x - pad, y: position.y - pad + spec.offset }, size: drawn, order: -1 }, contentAlign: 'fill'
@@ -55,4 +56,31 @@ export async function shadow(win, parent, size, position, level = 'popover', rad
     await Promise.all([UI.setHitTarget(win, id, false), ...(parent != null ? [UI.attach(win, parent, id)] : [])]);
     return id;
   } catch (error) { Log.error('Shadow: ' + error); return undefined; }
+}
+
+// How far a level's shadow reaches past its surface (and so the margin a
+// wrapper or window needs around it).
+export const shadowReach = (level, radius = RADIUS.surface) => geometry(level, radius).pad;
+
+// Wrap `inner` (a surface of `size`) with its shadow using layout alone: the
+// wrapper is the surface plus the reach on every side; the shadow fills it,
+// dropped by a visual offset; the surface fills it less the reach.
+// Resolves to the wrapper id (or `inner` itself if the shadow is unavailable).
+export async function withShadow(win, inner, size, level = 'card', radius = RADIUS.surface) {
+  try {
+    const { spec, pad, size: extent, slice } = geometry(level, radius);
+    const drawn = { x: size.x + pad * 2, y: size.y + pad * 2 };
+    const wrapper = await UI.createElement(win, { layout: { type: 'none' }, item: { size: drawn } });
+    const shade = await UI.createElement(win, {
+      renderable: { type: 'panel', mode: 'sliced', texture: await texture(win, level, radius), position: { x: 0, y: spec.offset },
+        frame: { size: drawn, origin: { x: 0, y: 0 }, aabb: { min: { x: 0, y: 0 }, max: { x: extent, y: extent } }, colour: SHADOW_COLOUR[level] },
+        slice: { top: slice, right: slice, bottom: slice, left: slice } },
+      // The surface usually exists before its wrapper: sort the shadow first.
+      item: { size: { x: 'auto', y: 'auto' }, order: -1 }
+    });
+    await UI.attach(win, wrapper, shade);
+    await Promise.all([UI.setHitTarget(win, shade, false), UI.setHitTarget(win, wrapper, false), UI.setMargin(win, inner, { t: pad, r: pad, b: pad, l: pad })]);
+    await UI.attach(win, wrapper, inner);
+    return wrapper;
+  } catch (error) { Log.error('Shadow: ' + error); return inner; }
 }

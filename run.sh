@@ -4,22 +4,22 @@ root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 entry=index.js
 if [[ ${1:-} == --app ]]; then
   component=${2:?Missing application name}
-  case $component in launcher|settings|wifi|lock) entry=apps/$component.js ;; *) printf 'Unknown application: %s\n' "$component" >&2; exit 2 ;; esac
+  case $component in launcher|settings|wifi|lock|account) entry=apps/$component.js ;; *) printf 'Unknown application: %s\n' "$component" >&2; exit 2 ;; esac
   shift 2
 fi
 export KOYA_DESKTOP_ROOT=$root
-# Development builds need the standard controls from the matching source tree.
-if [[ -z ${KOYA_ASSET_DIR:-} && -f $root/../helix/koya-base/assets/std/koya-controls.js ]]; then
-  export KOYA_ASSET_DIR
-  KOYA_ASSET_DIR=$(realpath -- "$root/../helix/koya-base/assets")
-fi
 binary=${KOYA_BIN:-koya}
 export KOYA_BIN
 KOYA_BIN=$(command -v -- "$binary") || { printf 'Set KOYA_BIN to an installed Koya executable.\n' >&2; exit 1; }
+export KOYA_ASSET_DIR=${KOYA_ASSET_DIR:-$(dirname -- "$KOYA_BIN")/../share/koya/assets}
+if [[ ! -f $KOYA_ASSET_DIR/std/koya-controls.js ]]; then
+  printf 'Set KOYA_ASSET_DIR to the matching Koya assets directory.\n' >&2
+  exit 1
+fi
 runtime_version=$("$KOYA_BIN" --version)
 if [[ ! $runtime_version =~ ^Koya[[:space:]]+([0-9]+)\.([0-9]+)\.([0-9]+) ]] ||
-   (( 10#${BASH_REMATCH[1]} == 0 && 10#${BASH_REMATCH[2]} < 6 )); then
-  printf 'Koyabar requires Koya 0.6.0 or newer; found %s.\n' "$runtime_version" >&2
+   (( 10#${BASH_REMATCH[1]} == 0 && (10#${BASH_REMATCH[2]} < 7 || (10#${BASH_REMATCH[2]} == 7 && 10#${BASH_REMATCH[3]} < 1)) )); then
+  printf 'Koya Desktop Shell requires Koya 0.7.1 or newer; found %s.\n' "$runtime_version" >&2
   exit 1
 fi
 if [[ ! -f $root/build/build.ninja ]]; then meson setup "$root/build" "$root"; fi

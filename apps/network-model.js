@@ -39,7 +39,9 @@ export function networkView(state = {}) {
   const name = kind === 'wifi' ? state.WifiSsid || state.NetworkName || 'Wi-Fi'
     : kind === 'offline' ? 'Not connected' : kind === 'unavailable' ? 'Network unavailable' : state.NetworkName || summary.title;
   const health = online && state.NetworkConnectivity === 'full' ? 'good' : online || connecting ? 'warn' : 'off';
-  const status = summary.status.replace(/^Connected · /, '');
+  // Offline, the title already says so: the status explains why.
+  const status = kind === 'offline' ? ({ disabled: 'Wi-Fi is off', disconnected: 'Wi-Fi on · no network in range', connecting: 'Connecting…',
+    unavailable: 'No Wi-Fi device' })[state.WifiState] || summary.status : summary.status.replace(/^Connected · /, '');
   const details = [];
   const add = (key, value, copy = false) => { if (value) details.push({ key, value: String(value), copy }); };
   if (online || connecting) {

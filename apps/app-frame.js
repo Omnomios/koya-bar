@@ -1,4 +1,4 @@
-import * as UI from 'Helix/UserInterface';
+import * as UI from './theme-ui.js';
 import * as Compositor from 'Koya/Compositor';
 import * as Engine from 'Helix/Engine';
 import * as Event from 'Helix/Event';
@@ -7,8 +7,11 @@ import { windowLayout } from './window-layout.js';
 import { popupContains } from './popup-layout.js';
 import { haptic } from './haptics.js';
 import { button, icon, label, text, row, children } from './touch-ui.js';
+import { createKit } from './kit.js';
+import { presets } from './motion.js';
+import { shadow } from './shadow.js';
 import { surfaceCursor } from './cursor.js';
-import { CREAM, ORANGE, MUTED, CLEAR, POPOVER, alpha, BAR_HEIGHT, NAV_HEIGHT, GUTTER, SPACE, RADIUS, TYPE, HEADER_HEIGHT, TOUCH } from './theme.js';
+import { CLEAR, ELEVATION, BAR_HEIGHT, GUTTER, SPACE, RADIUS, TYPE, HEADER_HEIGHT, MIN_CONTROL_SIZE, TEXT } from './theme.js';
 
 // The shared frame for Koya's apps (Settings, Wi-Fi): a panel centred on the
 // focused monitor, like the application picker, with a persistent header
@@ -17,25 +20,28 @@ import { CREAM, ORANGE, MUTED, CLEAR, POPOVER, alpha, BAR_HEIGHT, NAV_HEIGHT, GU
 // closes it. The chrome never rebuilds; it reacts. Apps supply pages and
 // decide where they lead.
 export const glyph = name => '/rom/assets/launcher/' + name + '.png';
-export const STATUS = 24;
+const STATUS_HEIGHT = 24;
 
 export async function appFrame({ title: initialTitle, namespace, name = initialTitle, hint = () => '', onBack, onClose }) {
   // Open on the focused monitor. (Querying Hyprland here stalls startup:
   // its replies are not delivered while the app's main promise is pending.)
-  const displays = await Compositor.listDisplays();
+  const displays = await Compositor.listDisplays({ backend: 'wayland' });
   const display = displays.find(item => item.focused) || displays[0];
   if (!display) throw new Error('No display available');
-  const panelFor = screen => ({ x: Math.min(560, screen.x - 40), y: Math.min(600, screen.y - BAR_HEIGHT - NAV_HEIGHT - 60) });
+  const panelFor = screen => ({ x: Math.min(560, screen.x - 40), y: Math.min(600, screen.y - BAR_HEIGHT - 60) });
   const placeFor = (screen, panel) => ({ x: Math.round((screen.x - panel.x) / 2), y: Math.round((screen.y - panel.y) / 2) });
   let screen = { x: Number(display.logical_width || display.width), y: Number(display.logical_height || display.height) };
   const win = await Compositor.createWindow({ role: 'overlay', anchor: 'top-left', size: screen, exclusiveZone: -1,
     display: display.display, namespace, msaaSamples: 1, keyboardInteractivity: 'exclusive',
     acceptPointerEvents: true, transparent: true });
   await Promise.all([Compositor.setWindowRenderingEnabled(win, false), Compositor.setClearColor(win, 0, 0, 0, 0)]);
-  // `size` is the panel's; pages and chrome lay out inside it.
+  // `size` is the page space pages lay out against; `shown` is the visible
+  // panel, fitted to the current page's height (never taller than `size`).
   const size = panelFor(screen);
-  let place = placeFor(screen, size);
-  const metrics = () => ({ width: size.x - 2 * GUTTER, stageHeight: size.y - SPACE.s - HEADER_HEIGHT - STATUS });
+  const shown = { ...size };
+  let place = placeFor(screen, shown);
+  const kit = createKit(win);
+  const metrics = () => ({ width: size.x - 2 * GUTTER, stageHeight: size.y - SPACE.s - HEADER_HEIGHT - STATUS_HEIGHT });
 
   // ---- Motion ------------------------------------------------------------
   // Koya runs one animation per element at a time. Each element keeps a single
@@ -73,83 +79,51 @@ export async function appFrame({ title: initialTitle, namespace, name = initialT
 
   // ---- Chrome ------------------------------------------------------------
   const fill = { x: 'auto', y: 'auto' };
-  const [backdrop, root, wall, shell, header, statusRow, stage, pagerBar, backButton, title, closeButton, status, prevButton, dotRow, nextButton] = await Promise.all([
+  const [backdrop, shell, header, statusRow, stage, backButton, title, closeButton, status] = await Promise.all([
     // Transparent, output-sized: a click that lands outside the panel closes.
     UI.createElement(win, { layout: { type: 'none' }, item: { size: fill }, onHover: surfaceCursor(win),
-      onActivate: event => { if (!popupContains(event.local, place, size)) close(); } }),
-    UI.createElement(win, { layout: { type: 'none' }, item: { position: place, size: { ...size } }, onHover: surfaceCursor(win),
-      inputOptions: { blockInput: true } }),
-    UI.createElement(win, { renderable: { type: 'box', colour: POPOVER, cornerRadius: RADIUS.surface, cornerResolution: 16 }, item: { size: fill }, contentAlign: 'fill' }),
+      onActivate: event => { if (!popupContains(event.local, place, shown)) close(); } }),
     UI.createElement(win, host({ layout: { type: 'column' }, item: { size: fill } })),
     UI.createElement(win, { layout: { type: 'row', alignItems: 'center', padding: { l: GUTTER - 12, r: GUTTER, t: SPACE.s, b: 0 } },
       item: { size: { x: 'auto', y: HEADER_HEIGHT + SPACE.s } } }),
     // A column lets the fluid status label fill the parent's cross axis.
-    UI.createElement(win, { layout: { type: 'column', padding: { l: GUTTER, r: GUTTER, t: 0, b: 0 } }, item: { size: { x: 'auto', y: STATUS } } }),
+    UI.createElement(win, { layout: { type: 'column', padding: { l: GUTTER, r: GUTTER, t: 0, b: 0 } }, item: { size: { x: 'auto', y: STATUS_HEIGHT } } }),
     UI.createElement(win, { layout: { type: 'none' }, clipToBounds: true, item: { size: { x: 'auto', y: 0 }, flexGrow: 1 } }),
-    UI.createElement(win, host({ layout: { type: 'row', justifyContent: 'center', alignItems: 'center' },
-      item: { position: { x: 0, y: size.y - GUTTER - TOUCH }, size: { x: 'auto', y: TOUCH } } })),
-    button(win, null, '', TOUCH, HEADER_HEIGHT, () => backShown && onBack?.(), { colour: CLEAR, icon: glyph('previous'), iconSize: 18, radius: RADIUS.control }),
+    button(win, null, '', MIN_CONTROL_SIZE, HEADER_HEIGHT, () => backShown && onBack?.(), { colour: CLEAR, icon: glyph('previous'), iconSize: 18, radius: RADIUS.control }),
     // Unclipped: the title slides into the back button's slot on a root page.
-    text(win, null, initialTitle, TYPE.title, 0, HEADER_HEIGHT, CREAM, undefined, 'left'),
-    button(win, null, '', TOUCH, HEADER_HEIGHT, () => close(), { colour: CLEAR, icon: glyph('close'), iconSize: 16, radius: RADIUS.control }),
-    label(win, null, '', TYPE.caption, 'auto', STATUS, MUTED),
-    arrowSlot('previous', -1),
-    UI.createElement(win, { layout: { type: 'row', justifyContent: 'center', alignItems: 'center', gap: 14 }, item: { size: { x: 88, y: TOUCH } } }),
-    arrowSlot('next', 1)
+    text(win, null, initialTitle, TYPE.title, 0, HEADER_HEIGHT, TEXT.primary, undefined, 'left'),
+    button(win, null, '', MIN_CONTROL_SIZE, HEADER_HEIGHT, () => close(), { colour: CLEAR, icon: glyph('close'), iconSize: 16, radius: RADIUS.control }),
+    label(win, null, '', TYPE.caption, 'auto', STATUS_HEIGHT, TEXT.secondary)
   ]);
+  // The panel: an elevated surface whose content area holds the page column.
+  // Long content scrolls inside its page (see the kit's scrollArea).
+  const panel = await kit.surface('panel', { layout: { type: 'none' } });
+  const root = panel.content, wall = panel.id;
+  // Centre the visible panel on the output, with its shadow beneath.
+  let shade;
+  const placePanel = async () => {
+    place = placeFor(screen, shown);
+    const previous = shade;
+    [shade] = await Promise.all([shadow(win, backdrop, shown, place, ELEVATION.panel.shadow),
+      UI.setLayoutAABB(win, panel.id, { min: place, max: { x: place.x + shown.x, y: place.y + shown.y } }),
+      ...(previous ? [UI.destroyElement(win, previous)] : [])]);
+  };
+  // Fit the panel to a page that reports its content height; otherwise use
+  // the whole page space.
+  const fit = async page => {
+    const height = page?.height ? Math.min(size.y, SPACE.s + HEADER_HEIGHT + STATUS_HEIGHT + page.height + GUTTER) : size.y;
+    if (height === shown.y && shown.x === size.x) return;
+    shown.x = size.x; shown.y = height;
+    await placePanel();
+  };
   // Enqueue attachments in visual order, independent of build completion order.
   await Promise.all([
-    UI.attach(win, backdrop, root), UI.attach(win, root, wall), UI.attach(win, root, shell), UI.attach(win, root, pagerBar),
+    UI.attach(win, backdrop, panel.id), UI.attach(win, root, shell),
     UI.attach(win, shell, header), UI.attach(win, shell, statusRow), UI.attach(win, shell, stage),
     UI.attach(win, header, backButton), UI.attach(win, header, title), UI.attach(win, header, closeButton),
     UI.attach(win, statusRow, status),
-    UI.attach(win, pagerBar, prevButton), UI.attach(win, pagerBar, dotRow), UI.attach(win, pagerBar, nextButton),
     UI.setElementId(win, backButton, 'app-back'), UI.setGrow(win, title, 1), UI.attachRoot(win, backdrop)
   ]);
-  let pagerState;
-  // Arrows dim through wrappers; button press clips keep their own opacity.
-  async function arrowSlot(glyphName, step) {
-    const slot = await UI.createElement(win, host({ layout: { type: 'row' }, item: { size: { x: 64, y: TOUCH } } }));
-    await button(win, slot, '', 64, TOUCH, () => pagerState?.turn(step), { colour: CLEAR, icon: glyph(glyphName), iconSize: 18, radius: RADIUS.control });
-    return slot;
-  }
-  let dots = [];
-  const DOT = 9, DIM = alpha(ORANGE, 0.35);
-  const dotPose = (on, animate) => !animate ? [{ time: 0, scale: on ? { x: 1, y: 1 } : { x: 0.7, y: 0.7 }, position: { x: 0, y: 0 }, opacity: 1 }]
-    : on ? [{ time: 0.1, scale: { x: 1.35, y: 1.35 }, position: { x: 0, y: -6 }, opacity: 1, ease: 'outCubic' },
-        { time: 0.22, scale: { x: 0.9, y: 1.1 }, position: { x: 0, y: 0 }, opacity: 1, ease: 'inQuad' },
-        { time: 0.32, scale: { x: 1.08, y: 0.94 }, position: { x: 0, y: 0 }, opacity: 1, ease: 'outQuad' },
-        { time: 0.42, scale: { x: 1, y: 1 }, position: { x: 0, y: 0 }, opacity: 1, ease: 'inOutQuad' }]
-      : [{ time: 0.16, scale: { x: 0.7, y: 0.7 }, position: { x: 0, y: 0 }, opacity: 1, ease: 'outCubic' }];
-  const arrow = (id, enabled) => play(id, [{ time: 0.16, opacity: enabled ? 1 : 0.3, ease: 'outCubic' }]);
-  const syncPager = async next => {
-    const previous = pagerState;
-    pagerState = next;
-    if (!next) {
-      if (previous) play(pagerBar, [{ time: 0.14, opacity: 0, ease: 'inQuad' }]);
-      await UI.setEnabled(win, pagerBar, false).catch(() => {});
-      return;
-    }
-    await UI.setEnabled(win, pagerBar, true);
-    const same = previous && previous.group === next.group && previous.count === next.count;
-    if (!same) {
-      await Promise.all(dots.map(dot => UI.destroyElement(win, dot)));
-      dots = await children(win, dotRow, Array.from({ length: next.count }, async (_, i) => {
-        const dot = await UI.createElement(win, { renderable: { type: 'circle', aabb: { min: { x: 0, y: 0 }, max: { x: DOT, y: DOT } }, resolution: 24,
-          colour: i === next.index ? ORANGE : DIM, origin: { x: 0.5, y: 0.5 } }, item: { size: { x: DOT + 4, y: TOUCH } }, contentAlign: { x: 'center', y: 'center' } });
-        await Promise.all([UI.setHitTarget(win, dot, false), play(dot, dotPose(i === next.index, false))]);
-        return dot;
-      }));
-      play(pagerBar, [{ time: 0, opacity: 0 }, { time: 0.25, opacity: 0 }, { time: 0.45, opacity: 1, ease: 'outCubic' }]);
-    } else if (previous.index !== next.index) {
-      await Promise.all([UI.setCircleColour(win, dots[previous.index], DIM), UI.setCircleColour(win, dots[next.index], ORANGE)]);
-      play(dots[previous.index], dotPose(false, true));
-      play(dots[next.index], dotPose(true, true));
-    }
-    arrow(prevButton, next.index > 0);
-    arrow(nextButton, next.index < next.count - 1);
-  };
-  await UI.setEnabled(win, pagerBar, false);
 
   let backShown = false, titleText = initialTitle;
   const showBack = visible => {
@@ -159,7 +133,7 @@ export async function appFrame({ title: initialTitle, namespace, name = initialT
       ? [{ time: 0, opacity: 0, scale: { x: 0.4, y: 0.4 } }, { time: 0.16, opacity: 1, scale: { x: 1.15, y: 1.15 }, ease: 'outCubic' }, { time: 0.3, opacity: 1, scale: { x: 1, y: 1 }, ease: 'inOutQuad' }]
       : [{ time: 0.12, opacity: 0, scale: { x: 0.4, y: 0.4 }, ease: 'inQuad' }]);
   };
-  const titleShift = () => backShown ? 0 : -TOUCH + 12;
+  const titleShift = () => backShown ? 0 : -MIN_CONTROL_SIZE + 12;
   const setTitle = (value, direction) => {
     if (value === titleText) { play(title, [{ time: 0.2, opacity: 1, position: { x: titleShift(), y: 0 }, ease: 'outCubic' }]); return; }
     titleText = value;
@@ -174,8 +148,8 @@ export async function appFrame({ title: initialTitle, namespace, name = initialT
   };
 
   // One status line: the page's hint, or a short-lived reaction to an action.
-  let statusText = '', statusTone = MUTED;
-  const setStatus = async (value, tone = MUTED, lift = 8) => {
+  let statusText = '', statusTone = TEXT.secondary;
+  const setStatus = async (value, tone = TEXT.secondary, lift = 8) => {
     if (value === statusText && tone === statusTone) return;
     statusText = value; statusTone = tone;
     await Promise.all([UI.setTextString(win, status, value), UI.setTextColour(win, status, tone)]);
@@ -186,10 +160,10 @@ export async function appFrame({ title: initialTitle, namespace, name = initialT
   // For background state changes: never cut a confirmation short.
   const refreshHint = () => statusTimer ? Promise.resolve() : setStatus(pageHint());
   // Short confirmations fade back to the hint quickly; problems linger.
-  const flash = (value, tone = ORANGE, hold) => {
+  const flash = (value, tone = TEXT.accent, hold) => {
     clearTimeout(statusTimer);
-    setStatus(value, tone, tone === ORANGE ? 10 : 8);
-    statusTimer = setTimeout(showHint, hold ?? (tone === ORANGE && value.length > 16 ? 3200 : 1400));
+    setStatus(value, tone, tone === TEXT.accent ? 10 : 8);
+    statusTimer = setTimeout(showHint, hold ?? (tone === TEXT.accent && value.length > 16 ? 3200 : 1400));
   };
 
   // ---- Shared rows -------------------------------------------------------
@@ -214,7 +188,7 @@ export async function appFrame({ title: initialTitle, namespace, name = initialT
     arrowIcon = trailingControl;
     const [headingLabel, valueLabel] = await children(win, detail, [
       label(win, null, heading, options.headingSize || TYPE.body, detailWidth, options.headingSize ? 26 : 20),
-      label(win, null, value, TYPE.caption, detailWidth, 18, options.valueColour || MUTED)
+      label(win, null, value, TYPE.caption, detailWidth, 18, options.valueColour || TEXT.secondary)
     ]);
     await Promise.all([
       ...(leading != null ? [UI.attach(win, target, leading.id ?? leading)] : []),
@@ -228,7 +202,7 @@ export async function appFrame({ title: initialTitle, namespace, name = initialT
   const section = async (parent, caption, trailingWidth = 0, build, width = metrics().width) => {
     const line = await UI.createElement(win, { layout: { type: 'row', alignItems: 'center' }, item: { size: { x: width, y: 32 } } });
     const [captionId, extra] = await children(win, line, [
-      label(win, null, caption, TYPE.caption, width - trailingWidth, 32, MUTED), ...(build ? [build(null)] : [])
+      label(win, null, caption, TYPE.caption, width - trailingWidth, 32, TEXT.secondary), ...(build ? [build(null)] : [])
     ]);
     if (parent != null) await UI.attach(win, parent, line);
     return { line, caption: captionId, extra };
@@ -251,7 +225,11 @@ export async function appFrame({ title: initialTitle, namespace, name = initialT
     if (closing) return;
     const previous = current;
     factory = { build, title: nextTitle, back };
-    if (previous && !animate) { previous.alive = false; await UI.destroyElement(win, previous.el); }
+    if (previous) {
+      previous.alive = false;
+      await previous.dispose?.();
+      if (!animate) await UI.destroyElement(win, previous.el);
+    }
     const next = await build();
     current = next;
     showBack(back);
@@ -267,10 +245,8 @@ export async function appFrame({ title: initialTitle, namespace, name = initialT
       next.items.forEach((id, index) => rise(id, 0.05 + index * 0.035));
       next.reveal?.();
     }
-    await syncPager(next.pager);
+    await fit(next);
     if (previous && animate) {
-      previous.alive = false;
-      previous.dispose?.();
       play(previous.el, [{ time: 0.22, opacity: 0, position: { x: -travel * 0.6, y: 0 }, ease: 'inQuad' }]);
       setTimeout(() => UI.destroyElement(win, previous.el).catch(error => Log.error(name + ' page: ' + error)), 260);
     }
@@ -314,13 +290,12 @@ export async function appFrame({ title: initialTitle, namespace, name = initialT
 
   windowLayout(win, next => enqueue(async () => {
     screen = next;
-    const panel = panelFor(screen), nextPlace = placeFor(screen, panel);
-    if (panel.x === size.x && panel.y === size.y && nextPlace.x === place.x && nextPlace.y === place.y) return;
+    const space = panelFor(screen);
+    if (space.x === size.x && space.y === size.y && placeFor(screen, shown).x === place.x && placeFor(screen, shown).y === place.y) return;
     await Compositor.setWindowRenderingEnabled(win, false);
     try {
-      Object.assign(size, panel); place = nextPlace;
-      await Promise.all([UI.setLayoutSize(win, root, { ...size }), UI.setLayoutPosition(win, root, place),
-        UI.setLayoutPosition(win, pagerBar, { x: 0, y: size.y - GUTTER - TOUCH })]);
+      Object.assign(size, space); shown.x = size.x; shown.y = Math.min(shown.y, size.y);
+      await placePanel();
       // Rotation is a relayout, so replace the page in the same frame rather
       // than replaying navigation with overlapping old and new pages.
       if (factory && current) await show(factory.build, { title: factory.title, back: factory.back, animate: false, dim: current.dim });
@@ -330,16 +305,19 @@ export async function appFrame({ title: initialTitle, namespace, name = initialT
   await hidden(backButton);
   play(title, [{ time: 0, opacity: 0, position: { x: titleShift(), y: 6 } }, { time: 0.3, opacity: 1, position: { x: titleShift(), y: 0 }, ease: 'outCubic' }]);
   await setStatus(pageHint());
-  // Rendering starts with the chrome; the first page fades in when shown.
+  await placePanel();
+  // Rendering starts with the chrome dropping in; the first page fades in when shown.
   await Compositor.setWindowRenderingEnabled(win, true);
+  play(panel.id, presets.dropIn());
+  if (shade) play(shade, presets.dropIn());
 
   return {
     // `root` is the layout-less panel: pages can dock to it.
-    win, size, wall, root, display,
+    win, size, wall, root, display, kit,
     get width() { return metrics().width; }, get stageHeight() { return metrics().stageHeight; },
     get current() { return current; }, get closing() { return closing; }, get settled() { return queue; },
     play, hidden, punch, shake, rise, host, enqueue, suspend, resume,
     setStatus, flash, showHint, refreshHint, setTitle,
-    chevron, navigate, section, newPage, live, show, go, setDim, close, syncPager
+    chevron, navigate, section, newPage, live, show, go, setDim, close
   };
 }
