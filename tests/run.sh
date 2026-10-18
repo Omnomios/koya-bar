@@ -40,7 +40,7 @@ if (( status != 0 )) || ! rg -q KOYA_PASSWORD_TEST_PASS "$XDG_RUNTIME_DIR/passwo
 # Greeter state and the login wallpaper's settings read: one home per case.
 greeter=$XDG_RUNTIME_DIR/greeter; user=$(id -un)
 mkdir -p "$greeter"/{valid,symlink,fifo,large,missing}/"$user"/.config/koya-bar
-printf '{"Wallpaper":"tidal-blue","GreeterWallpaper":true}' > "$greeter/valid/$user/.config/koya-bar/settings.json"
+printf '{"Wallpaper":"nocturne","GreeterWallpaper":true}' > "$greeter/valid/$user/.config/koya-bar/settings.json"
 ln -s "$greeter/valid/$user/.config/koya-bar/settings.json" "$greeter/symlink/$user/.config/koya-bar/settings.json"
 mkfifo "$greeter/fifo/$user/.config/koya-bar/settings.json"
 head -c 70000 /dev/zero | tr '\0' ' ' > "$greeter/large/$user/.config/koya-bar/settings.json"

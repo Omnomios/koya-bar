@@ -20,7 +20,7 @@ export default function main() {
         assert(Login.lastUser() === user, 'Refused names leave the remembered account');
       } else {
         const text = Login.userPreferences(user);
-        if (kind === 'valid') assert(JSON.parse(text).Wallpaper === 'tidal-blue', 'Settings are read for the account');
+        if (kind === 'valid') assert(JSON.parse(text).Wallpaper === 'nocturne', 'Settings are read for the account');
         else assert(text === null, kind + ': unsafe or missing settings are not read');
         assert(Login.userPreferences('../' + user) === null, 'Path-like names are refused');
       }

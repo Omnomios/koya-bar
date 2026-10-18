@@ -1,7 +1,0 @@
-Tool: built-in image_gen.imagegen; transparent_background: true.
-Reference: the official Koya fish logo.
-
-Use case: logo-brand / style-transfer.
-Image 1 is the official Koya fish logo and the edit target. Create one faithful, simplified icon derived from this exact fish for a desktop status bar, displayed at 28–30 logical pixels high on a deep green background.
-Keep the recognizable top-down koi fish silhouette, its head at the top, orange elongated body curving down to the left then into the cream forked tail flowing right, cream side fins, and orange markings. Preserve the orientation and proportions of the official logo. Remove the dark rounded-square backing entirely. Simplify the painted texture and fine fin lines into clean, flat, solid shapes with a few broad darker-orange patches, so it remains readable at a small size. Use warm orange #D96A1D, cream #F4E9D8 and one darker orange accent. Smooth sharp antialiased edges, strong clean silhouette, no thin outlines. Center the single fish on a square canvas, fully visible with a modest even transparent margin, occupying about 88% of the canvas height.
-Output: a single standalone icon with genuine transparent alpha background. No square, badge, border, shadow, gradient, scenery, water, text, wordmark, watermark or additional fish.

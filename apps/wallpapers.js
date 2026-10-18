@@ -1,10 +1,6 @@
 // Artwork dimensions are source pixels, not UI pixels.
 export const WALLPAPERS = [
-  { id: 'waypaper-current', name: 'Nocturne of Steel and Glass', texture: '/rom/assets/wallpapers/waypaper-current.png', size: { x: 2560, y: 1600 } },
-  { id: 'earthy-green', name: 'Earthy green', texture: '/rom/assets/earthy-green-wallpaper.png', size: { x: 864, y: 1821 } },
-  { id: 'tidal-blue', name: 'Tidal blue', texture: '/rom/assets/wallpapers/tidal-blue.png', size: { x: 863, y: 1822 } },
-  { id: 'terracotta-dunes', name: 'Terracotta dunes', texture: '/rom/assets/wallpapers/terracotta-dunes.png', size: { x: 863, y: 1823 } },
-  { id: 'violet-dusk', name: 'Violet dusk', texture: '/rom/assets/wallpapers/violet-dusk.png', size: { x: 863, y: 1823 } }
+  { id: 'nocturne', name: 'Nocturne of Steel and Glass', texture: '/rom/assets/wallpapers/nocturne.png', size: { x: 2560, y: 1600 } }
 ];
 // Imported wallpapers ('user:<file>') come from the desktop module at run
 // time; see user-wallpapers.js. Built-ins preview from their full texture.
