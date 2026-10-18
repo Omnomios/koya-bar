@@ -120,7 +120,8 @@ export function createKit(win) {
       setGlyph: path => UI.setTexture(win, image, path) };
   };
 
-  // Label and reading over a row of segments that light up in turn. With
+  // Label and reading over a row of segments that light up in turn (only those
+  // newly lit: a rising level lights just its new segments). With
   // `charging`, the next segment to fill breathes until the level reaches it.
   // With `limit`, segments past it dim: the level will not go there.
   const meter = async ({ label, width, segments: count = KIT_METRICS.meterSegments }) => {
@@ -140,20 +141,23 @@ export function createKit(win) {
     }
     const lit = percent => Math.max(1, Math.round(percent * count / 100));
     const CAPPED = 0.28;
-    let breathing = -1, cap = count;
+    let breathing = -1, cap = count, shown = 0;
     const set = async (percent, readingText, animate = false, { charging = false, limit = null } = {}) => {
       const filled = lit(percent), nextCap = limit === null ? count : lit(limit);
       const next = charging && filled < nextCap ? filled : -1;
       const opacity = i => i >= nextCap ? CAPPED : 1;
       await Promise.all([UI.setTextString(win, reading, readingText),
         ...segments.map((id, i) => UI.setBoxColour(win, id, i < filled || i === next ? SURFACE.accent : SURFACE.track))]);
-      if (animate) segments.forEach((id, i) => play(id, i < filled ? presets.light(i, opacity(i)) : presets.fade(opacity(i))));
+      if (animate) segments.forEach((id, i) => {
+        if (i >= filled) play(id, presets.fade(opacity(i)));
+        else if (i >= shown) play(id, presets.light(i - shown, opacity(i)));
+      });
       // The cap moved: segments it crossed fade in turn, outward from it.
       else if (nextCap !== cap) segments.forEach((id, i) => {
         if (i === next || (i >= cap) === (i >= nextCap)) return;
         play(id, presets.fade(opacity(i), Math.abs(i - Math.min(cap, nextCap)) * 0.05));
       });
-      cap = nextCap;
+      cap = nextCap; shown = filled;
       if (next !== breathing) {
         if (breathing >= 0) play(segments[breathing], breathing >= cap ? presets.fade(CAPPED) : presets.steady());
         if (next >= 0) play(segments[next], presets.breathe());
