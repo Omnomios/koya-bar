@@ -1,9 +1,9 @@
 import * as Process from 'Module/process';
 import * as Log from 'Helix/Log';
 import { promptEvents, createPromptQueue } from './ssh-agent-model.js';
-import { showSshPrompt } from './ssh-prompt.js';
+import { showSshPrompt } from './authentication-prompt.js';
 
-export function startSshAgent() {
+export function startSshAgent(authentication) {
   const runtime = Process.getEnv('XDG_RUNTIME_DIR', ''), home = Process.getEnv('HOME', '');
   if (!runtime || !home) { Log.error('SSH integration requires XDG_RUNTIME_DIR and HOME'); return; }
   const root = Process.getEnv('KOYA_DESKTOP_ROOT', '.'), socket = runtime + '/koya-ssh/agent.sock';
@@ -11,7 +11,8 @@ export function startSshAgent() {
   const upstream = Process.getEnv('KOYA_SSH_UPSTREAM', '') || (inherited && inherited !== socket ? inherited : runtime + '/ssh-agent.socket');
   let child, stopping = false, ready = false;
   const failed = () => Log.error('Koya SSH prompt could not be displayed');
-  const queue = createPromptQueue({ show: showSshPrompt, reply: value => child.write(value), onError: failed });
+  const queue = authentication ? { receive: event => authentication.ssh(event, value => child.write(value)), clear: authentication.clearSsh }
+    : createPromptQueue({ show: showSshPrompt, reply: value => child.write(value), onError: failed });
   const stop = () => {
     stopping = true;
     queue.clear();

@@ -39,19 +39,25 @@ theme once and everything follows it, including the greeter.
 It's also meant to be looked at. I like text interfaces and they have their
 place, but I also like the visual polish and consistency of macOS, and Linux
 rarely gets that. Popovers drop in, meters light up segment by segment and busy
-states animate rather than printing "Loading…". That doesn't cost what it would in Electron; the whole
-shell sits at around 48 MB of memory.
+states animate rather than printing "Loading…". That doesn't cost what it
+would in Electron; the whole shell sits at around 48 MB of memory.
+
+That consistency carries through to passwords. Signing in, unlocking the
+screen, unlocking an SSH key and approving `sudo` or a system change all happen
+in the same dialog, rather than a terminal prompt or a window from some other
+toolkit. It names what's asking, and a wrong password shakes it rather than
+closing it.
 
 And it's meant to be pulled apart. The UI is about 7,000 lines of plain
 JavaScript in [`apps/`](apps/), with no build step. Native code only appears
-where the system demands it; PAM, greetd and the SSH agent proxy. If you don't
-like how something looks or behaves, change it.
+where the system demands it; PAM, greetd, polkit and the SSH agent proxy. If
+you don't like how something looks or behaves, change it.
 
 <p align="center">
   <a href="docs/screenshots/launcher.jpg"><img src="docs/screenshots/launcher.jpg" width="400" alt="Application picker"></a>
   <a href="docs/screenshots/theme-editor.jpg"><img src="docs/screenshots/theme-editor.jpg" width="400" alt="Theme editor in Settings"></a>
   <a href="docs/screenshots/power.jpg"><img src="docs/screenshots/power.jpg" width="400" alt="Battery and power popover"></a>
-  <a href="docs/screenshots/greeter.jpg"><img src="docs/screenshots/greeter.jpg" width="400" alt="Login greeter"></a>
+  <a href="docs/screenshots/ssh-prompt.jpg"><img src="docs/screenshots/ssh-prompt.jpg" width="400" alt="SSH key passphrase prompt"></a>
 </p>
 
 ## What's included
@@ -66,6 +72,7 @@ like how something looks or behaves, change it.
 | **Lock screen** | Compositor session lock on every output, authenticated through PAM |
 | **Login greeter** | A greetd greeter in the same visual language as the desktop |
 | **SSH prompts** | Passphrase prompts for your existing ssh-agent, asked on first use |
+| **Authorisation** | Polkit and sudo askpass prompts using the same password dialog |
 
 Controls for hardware or services you don't have are hidden rather than greyed
 out.
@@ -110,15 +117,15 @@ with `koya-`. Float the desktop portal's file chooser so it opens as a dialog.
 - Installed Koya **0.7.1 or newer**, its shared assets, and matching Helix
   `dbus`, `hypr` and `process` plugins. Session locking also needs `pam`.
 - A working Hyprland session and Vulkan driver.
-- Meson, Ninja, a C++17 compiler, pkg-config and the `gio-unix-2.0` development
-  library to build this project's native modules.
+- Meson, Ninja, a C++17 compiler, pkg-config and the `gio-unix-2.0` and
+  `polkit-agent-1` development libraries to build this project's native modules.
 - GdkPixbuf and its image loaders; librsvg for SVG icons.
 
 Install only the services for the features you use:
 
 | Feature | Service or tool |
 | --- | --- |
-| Network and Wi-Fi | NetworkManager and a session polkit agent |
+| Network and Wi-Fi | NetworkManager |
 | Battery and charge control | UPower |
 | Power modes | power-profiles-daemon |
 | Audio | PulseAudio or PipeWire's PulseAudio server, with `pactl` |
@@ -126,6 +133,7 @@ Install only the services for the features you use:
 | Image chooser | xdg-desktop-portal and a file-chooser backend, such as GTK |
 | Login greeter | greetd |
 | SSH prompts | OpenSSH and an existing ssh-agent |
+| Authorisation prompts | polkit; sudo for `sudo -A` |
 | Idle locking | hypridle |
 
 `run.sh` uses the installed Koya and builds this project's native modules into
@@ -196,6 +204,10 @@ Applications launch through GIO's desktop-entry handling, including terminal
 entries, Exec field codes and D-Bus activation.
 
 ## Login greeter
+
+<p align="center">
+  <a href="docs/screenshots/greeter.jpg"><img src="docs/screenshots/greeter.jpg" width="600" alt="Login greeter"></a>
+</p>
 
 The greeter discovers installed Wayland sessions and asks greetd to authenticate
 and start the selected session. After logout, greetd shows the greeter again.
@@ -281,12 +293,53 @@ loads. Ordinary `ssh-add` remains available for terminal prompts. Keys outside
 Closing Koya leaves the upstream agent running but makes the proxy unavailable
 until the shell starts again.
 
+## GUI authorisation
+
+Koya registers a polkit agent for its login session. Remove other polkit agents
+from the session's startup commands so they do not compete for registration.
+Polkit, askpass and SSH key prompts share the existing password dialog and appear
+one at a time. Pending requests are cancelled when the session locks, becomes
+inactive or prepares to sleep.
+
+<p align="center">
+  <a href="docs/screenshots/sudo-prompt.jpg"><img src="docs/screenshots/sudo-prompt.jpg" width="600" alt="Administrator access dialog for sudo -A"></a>
+</p>
+
+The dialog says what is asking. Polkit requests are titled with their action,
+such as "Switch power profile". For askpass, the shell looks up the process
+behind the request: when it's Koya's helper, the dialog shows the command that
+started it, such as `sudo -A pacman -Syu`; any other caller is shown as itself,
+so it can't borrow sudo's name. This is for your information, not a security
+boundary; any program running as you can still draw its own window.
+
+A wrong password keeps the dialog open. It shakes, clears the field and says
+so beside the buttons. Polkit allows three attempts per request, matching
+sudo's default, and sudo's own retries reopen the dialog already marked as
+refused.
+
+For GUI password prompts from applications launched by Hyprland, add these
+environment variables to its configuration, using your checkout's absolute path:
+
+```lua
+hl.env("SUDO_ASKPASS", "/absolute/path/to/koya-bar/build/native/modules/koya-askpass")
+hl.env("SSH_ASKPASS", "/absolute/path/to/koya-bar/build/native/modules/koya-askpass")
+```
+
+Log in again so new applications inherit them. `run.sh` also sets these variables
+for applications launched by Koya. Use `sudo -A command` to request the GUI;
+ordinary `sudo` continues to prompt in the terminal. OpenSSH uses the helper
+when it requests askpass. No sudoers or PAM changes are needed.
+
+The Koya lock screen reports its lock state to logind. An alternative locker
+must also maintain logind's `LockedHint` for authentication prompts to follow
+its lock state.
+
 ## Develop and test
 
 UI code is in `apps/`, artwork in `assets/`, and native modules in
 `native/modules/`. Plugin SDK headers are bundled in `native/sdk/`.
 
-Run the focused login, locking, account and SSH-prompt checks with Node.js:
+Run the focused login, locking, account and authentication checks with Node.js:
 
 ```bash
 npm test

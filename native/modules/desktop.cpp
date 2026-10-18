@@ -223,7 +223,8 @@ struct DesktopModule: NativeModule {
 };
 extern "C" HELIX_PLUGIN_EXPORT int helix_plugin_integrate(JSContext *ctx, const char *name, const HelixPluginHost *host, HelixPluginInstance **out) {
     auto *self = new DesktopModule(ctx);
-    self->functions = {{"userName", [](NativeModule *base, int, JSValueConst *) {
+    self->functions = {{"processId", [](NativeModule *base, int, JSValueConst *) { return JS_NewUint32(base->js, getpid()); }},
+        {"userName", [](NativeModule *base, int, JSValueConst *) {
             passwd *user = getpwuid(getuid());
             if (!user || !user->pw_name) return JS_ThrowInternalError(base->js, "Cannot resolve the current account");
             return JS_NewString(base->js, user->pw_name);

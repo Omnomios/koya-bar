@@ -16,6 +16,7 @@ import { configureTheme } from './theme.js';
 import { configureWallpaper } from './wallpaper-surface.js';
 import { createNotifications } from './notifications.js';
 import { createVolume } from './volume.js';
+import { authentication } from './authentication.js';
 
 const NAME = 'org.koya.Shell1', PATH = '/org/koya/Shell1';
 const methods = {
@@ -55,7 +56,15 @@ export async function startShell() {
     setChargeControl: battery.setChargeControl,
     persist: text => Desktop.savePreferences(text), openBuiltin,
     changed: state => Bus.emitSignal(PATH, NAME, 'StateChanged', 'a{sv}', shellStatePayload(state)) });
+  const auth = authentication(values => service.update(values));
+  service.update({ Active: false, ScreenState: 'unknown' });
   Bus.exportObject(PATH, NAME, invocation => {
+    if (invocation.member === 'Askpass') {
+      if (invocation.signature !== 'ss') { invocation.error('org.freedesktop.DBus.Error.InvalidArgs', 'Expected prompt and mode'); return; }
+      auth.ask(...invocation.args, invocation.sender).then(answer => invocation.reply('s', answer),
+        () => invocation.error(NAME + '.Error.Cancelled', 'Authentication cancelled'));
+      return;
+    }
     const specification = methods[invocation.member];
     if (!specification) { invocation.error('org.freedesktop.DBus.Error.UnknownMethod', invocation.member); return; }
     if (invocation.signature !== specification[0]) { invocation.error('org.freedesktop.DBus.Error.InvalidArgs', 'Unexpected arguments'); return; }
@@ -100,6 +109,7 @@ export async function startShell() {
     sync = sync.then(() => syncDisplays()).catch(error => Log.error('Displays: ' + error));
   });
   Hypr.connect();
-  const sshAgent = startSshAgent();
-  globalThis.koyaShell = { service, bars, sshAgent };
+  const sshAgent = startSshAgent(auth);
+  setTimeout(() => auth.start(), 0);
+  globalThis.koyaShell = { service, bars, sshAgent, authentication: auth };
 }

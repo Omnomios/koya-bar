@@ -79,7 +79,10 @@ export async function withShadow(win, inner, size, level = 'card', radius = RADI
       item: { size: { x: 'auto', y: 'auto' }, order: -1 }
     });
     await UI.attach(win, wrapper, shade);
-    await Promise.all([UI.setHitTarget(win, shade, false), UI.setHitTarget(win, wrapper, false), UI.setMargin(win, inner, { t: pad, r: pad, b: pad, l: pad })]);
+    // The wrapper has no renderable to resolve a normalised pivot from, so it
+    // would scale from its top-left corner: pivot on its centre, in pixels.
+    await Promise.all([UI.setHitTarget(win, shade, false), UI.setHitTarget(win, wrapper, false), UI.setMargin(win, inner, { t: pad, r: pad, b: pad, l: pad }),
+      UI.setOrigin(win, wrapper, { x: drawn.x / 2, y: drawn.y / 2 })]);
     await UI.attach(win, wrapper, inner);
     return wrapper;
   } catch (error) { Log.error('Shadow: ' + error); return inner; }

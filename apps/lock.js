@@ -12,6 +12,7 @@ import { readSettings } from './settings-model.js';
 import { configureWallpaper } from './wallpaper-surface.js';
 import { authScreen, AUTH_CARD_WIDTH, AUTH_CARD_PADDING } from './auth-screen.js';
 import { userAvatar } from './user-avatar.js';
+import { setLockedHint } from './session-state.js';
 import { passwordInput } from './password-input.js';
 import { text, button } from './touch-ui.js';
 import { destroySurface } from './cursor.js';
@@ -55,7 +56,10 @@ async function build() {
     let answer = password; password = '';
     const checking = controller.submit(answer); answer = '';
     await Promise.all([updateInput(), updateAvailability()]);
-    if (await checking) Engine.quit();
+    if (await checking) {
+      await setLockedHint(false).catch(error => Log.error('Unlock session state: ' + error));
+      Engine.quit();
+    }
     else {
       for (const screen of screens.values()) screen.play(screen.card, presets.shake());
       await updateAvailability();
@@ -114,6 +118,7 @@ async function build() {
     await new Promise(resolve => setTimeout(resolve, 50));
   }
   if (!confirmed) throw new Error('The compositor did not confirm the lock');
+  await setLockedHint(true).catch(error => Log.error('Lock session state: ' + error));
   await updateAvailability();
   // Hypridle observes the compositor lock and continues its display/sleep policy.
   let updating = false;

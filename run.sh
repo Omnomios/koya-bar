@@ -24,6 +24,8 @@ if [[ ! $runtime_version =~ ^Koya[[:space:]]+([0-9]+)\.([0-9]+)\.([0-9]+) ]] ||
 fi
 if [[ ! -f $root/build/build.ninja ]]; then meson setup "$root/build" "$root"; fi
 meson compile -C "$root/build"
+export SUDO_ASKPASS=${SUDO_ASKPASS:-$root/build/native/modules/koya-askpass}
+export SSH_ASKPASS=${SSH_ASKPASS:-$root/build/native/modules/koya-askpass}
 plugins=${KOYA_PLUGIN_DIR:-}
 if [[ -z $plugins ]]; then
   for candidate in "$(dirname -- "$KOYA_BIN")/plugins" "$(dirname -- "$KOYA_BIN")/../lib" /usr/lib; do

@@ -11,7 +11,7 @@ endforeach
 configure_file(input: 'hypridle.example.conf.in', output: 'hypridle.example.conf', configuration: desktop_config)
 node = find_program('node', required: false)
 if node.found()
-  foreach suite : ['login', 'lock', 'accounts', 'ssh-agent-model']
+  foreach suite : ['login', 'lock', 'accounts', 'ssh-agent-model', 'authentication', 'authentication-view']
     test(suite, node, args: files('tests/' + suite + '.mjs'))
   endforeach
 endif

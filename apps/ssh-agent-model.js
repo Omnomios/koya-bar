@@ -29,14 +29,23 @@ export function promptReply(id, answer) {
 
 // Serialize surface lifetimes. A canceled request can arrive while its window
 // is still being built; finish building and dispose it before showing the next.
-export function createPromptQueue({ show, reply, onError = () => {} }) {
+// A `hold` entry keeps its surface after an answer, until it is dismissed or
+// asked again: the same surface then shows the retry.
+export function createPromptQueue({ show, reply, encode = promptReply, onError = () => {}, hold = () => false }) {
   const pending = new Map();
   let active, work = Promise.resolve();
-  const answer = (id, secret) => {
-    if (!pending.has(id)) return;
+  const answer = (entry, secret) => {
+    const id = entry.id;
+    if (pending.get(id) !== entry || entry.waiting) return;
+    if (secret != null && hold(entry)) {
+      entry.waiting = true;
+      try { reply(encode(id, secret)); } catch (_) { entry.waiting = false; onError(); }
+      secret = undefined;
+      return;
+    }
     pending.delete(id);
-    try { reply(promptReply(id, secret)); } catch (_) {
-      try { reply(promptReply(id, null)); } catch (_) {}
+    try { reply(encode(id, secret)); } catch (_) {
+      try { reply(encode(id, null)); } catch (_) {}
       onError();
     }
     secret = undefined;
@@ -44,22 +53,31 @@ export function createPromptQueue({ show, reply, onError = () => {} }) {
   };
   const sync = async () => {
     while (true) {
-      if (active && !pending.has(active.id)) {
+      if (active && pending.get(active.id) !== active) {
         try { await active.surface?.dispose(); } catch (_) { onError(); }
         active = undefined;
       }
-      if (active || !pending.size) return;
+      if (active) {
+        if (active.dirty) { active.dirty = false; await active.surface?.update?.(active); active.retry = false; }
+        return;
+      }
+      if (!pending.size) return;
       active = pending.values().next().value;
       const entry = active;
-      try { entry.surface = await show(entry.text, secret => answer(entry.id, secret)); }
-      catch (_) { const id = active.id; active = undefined; answer(id, null); onError(); }
+      try { entry.surface = await show(entry.text, secret => answer(entry, secret), entry); }
+      catch (_) { active = undefined; answer(entry, null); onError(); }
     }
   };
   const schedule = () => (work = work.then(sync).catch(() => { onError(); }));
   return {
     receive: event => {
       if (event.type === 'prompt') {
-        if (!pending.has(event.id)) pending.set(event.id, { ...event });
+        const entry = pending.get(event.id);
+        if (!entry) pending.set(event.id, { ...event });
+        else if (entry.waiting) { Object.assign(entry, event, { waiting: false, retry: true }); entry.dirty = true; }
+      } else if (event.type === 'update') {
+        const entry = pending.get(event.id);
+        if (entry) { Object.assign(entry, event); entry.dirty = true; }
       } else if (event.type === 'dismiss') pending.delete(event.id);
       return schedule();
     },
