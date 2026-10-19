@@ -14,7 +14,7 @@ export function settingValue(key, value) {
     const minutes = Number(value);
     if (Number.isInteger(minutes) && (minutes === 0 || minutes >= 15 && minutes <= 10080)) return minutes;
   }
-  if (['ClockShowDate', 'ClockShowSeconds', 'GreeterWallpaper', 'UpdatesIncludeAUR'].includes(key)) {
+  if (['ClockShowDate', 'ClockShowSeconds', 'GreeterWallpaper', 'UpdatesIncludeAUR', 'UpdatesHideWhenEmpty'].includes(key)) {
     if (value === true || value === 'true') return true;
     if (value === false || value === 'false') return false;
   }

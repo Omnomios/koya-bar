@@ -92,24 +92,32 @@ export default async () => {
   };
   const updates = async () => {
     const page = await frame.newPage();
-    let aurToggle;
+    let aurToggle, hideToggle;
     const changeAUR = () => save('UpdatesIncludeAUR', !state.UpdatesIncludeAUR);
-    const [open, interval, aur] = await Promise.all([
+    const changeHide = () => save('UpdatesHideWhenEmpty', !state.UpdatesHideWhenEmpty);
+    const [open, interval, hide, aur] = await Promise.all([
       frame.navigate(null, 'Open OS updates', updatesSummary(state), LIST_ROW_HEIGHT, async () => {
         try { await call('OpenUpdates'); frame.close(); }
         catch (_) { frame.flash('Could not open OS updates', TEXT.accent); }
       }),
       frame.navigate(null, 'Check interval', intervalLabel(state.UpdatesCheckInterval), LIST_ROW_HEIGHT, () => go('updateInterval', 1)),
-      frame.navigate(null, 'Include AUR packages', 'yay', LIST_ROW_HEIGHT, changeAUR, {
+      frame.navigate(null, 'Hide icon when no updates', 'Checks and errors stay visible', LIST_ROW_HEIGHT, changeHide, {
+        trailing: 56, trailingBuild: async parent => { hideToggle = await toggle(frame.win, parent, state.UpdatesHideWhenEmpty, changeHide); return hideToggle; }
+      }),
+      state.UpdatesAURAvailable ? frame.navigate(null, 'Include AUR packages', 'yay', LIST_ROW_HEIGHT, changeAUR, {
         trailing: 56, trailingBuild: async parent => { aurToggle = await toggle(frame.win, parent, state.UpdatesIncludeAUR, changeAUR); return aurToggle; }
-      })
+      }) : null
     ]);
-    await Promise.all([open.target, interval.target, aur.target].map(id => UI.attach(frame.win, page.el, id)));
-    await Promise.all([UI.setElementId(frame.win, interval.target, 'settings-updates-interval'), UI.setElementId(frame.win, aur.target, 'settings-updates-aur')]);
-    page.items.push(open.target, interval.target, aur.target);
-    page.height = SPACE.xs + 3 * LIST_ROW_HEIGHT + 2 * SPACE.s;
+    const rows = [open, interval, hide, aur].filter(Boolean);
+    await Promise.all(rows.map(row => UI.attach(frame.win, page.el, row.target)));
+    await Promise.all([UI.setElementId(frame.win, interval.target, 'settings-updates-interval'),
+      UI.setElementId(frame.win, hide.target, 'settings-updates-hide-empty')]);
+    if (aur) await UI.setElementId(frame.win, aur.target, 'settings-updates-aur');
+    page.items.push(...rows.map(row => row.target));
+    page.height = SPACE.xs + rows.length * LIST_ROW_HEIGHT + (rows.length - 1) * SPACE.s;
     page.update = () => Promise.all([UI.setTextString(frame.win, open.valueLabel, updatesSummary(state)),
-      UI.setTextString(frame.win, interval.valueLabel, intervalLabel(state.UpdatesCheckInterval)), aurToggle.set(state.UpdatesIncludeAUR)]);
+      UI.setTextString(frame.win, interval.valueLabel, intervalLabel(state.UpdatesCheckInterval)),
+      hideToggle.set(state.UpdatesHideWhenEmpty), aurToggle?.set(state.UpdatesIncludeAUR)]);
     return page;
   };
   const updateInterval = async () => {

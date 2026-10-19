@@ -1,5 +1,5 @@
 export const UPDATE_INTERVALS = [0, 15, 30, 60, 180, 360, 720, 1440];
-export const updateDefaults = { UpdatesCheckInterval: 60, UpdatesIncludeAUR: true };
+export const updateDefaults = { UpdatesCheckInterval: 60, UpdatesIncludeAUR: true, UpdatesHideWhenEmpty: false };
 export const intervalLabel = minutes => minutes === 0 ? 'Manual only' : minutes < 60 || minutes % 60 ? `Every ${minutes} minutes`
   : minutes === 60 ? 'Every hour' : minutes === 1440 ? 'Every day' : `Every ${minutes / 60} hours`;
 export const cleanOutput = text => String(text).replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '').replace(/\r/g, '\n').replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '');
@@ -19,7 +19,8 @@ export function parseUpdates(output, source) {
 // busy and a warning dot when the last check failed.
 export function updatesIndicator(state) {
   const busy = !!(state.UpdatesInstalling || state.UpdatesChecking);
-  return { visible: !!state.UpdatesAvailable, busy, warning: !busy && !!state.UpdatesError,
+  return { visible: !!state.UpdatesAvailable && (!state.UpdatesHideWhenEmpty || state.UpdatesCount > 0 || busy || !!state.UpdatesError),
+    busy, warning: !busy && !!state.UpdatesError,
     text: busy || !(state.UpdatesCount > 0) ? '' : String(state.UpdatesCount) };
 }
 
@@ -84,7 +85,7 @@ export function createUpdates({ run, exists, changed = () => {}, now = () => Dat
     checkedAt: 0, packages: [], error: '', log: '', message: '', progress: null };
   const snapshot = () => ({ ...state, packages: state.packages.map(item => ({ ...item })),
     progress: state.progress && { ...state.progress, done: [...state.progress.done], packages: state.progress.packages.map(item => ({ ...item })) } });
-  const summary = () => ({ UpdatesAvailable: state.available, UpdatesChecking: state.checking, UpdatesInstalling: state.installing,
+  const summary = () => ({ UpdatesAvailable: state.available, UpdatesAURAvailable: exists('/usr/bin/yay'), UpdatesChecking: state.checking, UpdatesInstalling: state.installing,
     UpdatesAuthenticating: state.authenticating, UpdatesCheckedAt: state.checkedAt, UpdatesCount: state.packages.length,
     UpdatesError: state.error, UpdatesRevision: revision });
   const publish = values => { state = { ...state, ...values }; revision++; if (!disposed) changed(summary()); };
@@ -97,8 +98,8 @@ export function createUpdates({ run, exists, changed = () => {}, now = () => Dat
     const packages = [], errors = [];
     const sources = [{ name: 'Repository', command: '/usr/bin/checkupdates', args: ['--nocolor'], empty: 2,
       missing: 'Install pacman-contrib to check repository updates.' }];
-    if (options.UpdatesIncludeAUR) sources.push({ name: 'AUR', command: '/usr/bin/yay', args: ['-Qua', '--color', 'never'], empty: 1,
-      missing: 'Install yay to check and install AUR updates.' });
+    if (options.UpdatesIncludeAUR && exists('/usr/bin/yay'))
+      sources.push({ name: 'AUR', command: '/usr/bin/yay', args: ['-Qua', '--color', 'never'], empty: 1 });
     for (const source of sources) {
       try {
         if (!exists(source.command)) throw new Error(source.missing);
@@ -128,7 +129,7 @@ export function createUpdates({ run, exists, changed = () => {}, now = () => Dat
   };
   const install = () => {
     if (disposed || running || !state.available) throw new Error('Updates are busy or unavailable');
-    if (options.UpdatesIncludeAUR && !exists('/usr/bin/yay')) throw new Error('Install yay to update AUR packages.');
+    const includeAUR = options.UpdatesIncludeAUR && exists('/usr/bin/yay');
     cancel(timer);
     publish({ installing: true, authenticating: true, error: '', log: '', message: 'Waiting for administrator approval…', progress: startProgress(state.packages) });
     running = Promise.resolve().then(async () => {
@@ -137,7 +138,7 @@ export function createUpdates({ run, exists, changed = () => {}, now = () => Dat
         if (approval.code !== 0) throw new Error(cleanOutput(approval.stderr).trim() || 'Administrator approval was cancelled.');
         publish({ authenticating: false, message: 'Installing updates…', progress: { ...state.progress, phase: 'refresh' } });
         const onOutput = chunk => publish({ log: (state.log + cleanOutput(chunk)).slice(-32768), progress: advanceProgress(state.progress, chunk) });
-        const result = options.UpdatesIncludeAUR
+        const result = includeAUR
           ? await run('/usr/bin/yay', ['-Syu', '--noconfirm', '--color', 'never', '--sudo', '/usr/bin/sudo', '--sudoflags', '-A'], { onOutput })
           : await run('/usr/bin/sudo', ['-A', '/usr/bin/pacman', '-Syu', '--noconfirm', '--color', 'never'], { onOutput });
         if (result.code !== 0) throw new Error(cleanOutput(result.stderr).trim() || 'Installation failed. See the installation log.');

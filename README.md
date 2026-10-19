@@ -200,20 +200,25 @@ On Arch Linux, install `pacman-contrib` for repository checks and `yay` for AUR
 support. Repository checks use
 [`checkupdates`](https://man.archlinux.org/man/checkupdates.8.en), which refreshes
 a separate database without changing the system's package database or asking
-for administrator access. AUR checks use `yay -Qua`. Missing tools and network
-failures appear in the updates window.
+for administrator access. AUR checks use `yay -Qua`. When `yay` is absent,
+AUR checks are skipped and its settings option is hidden. Missing repository
+tools and network failures appear in the updates window.
 
 **Settings → OS updates → Check interval** offers manual checks only, every
 15 or 30 minutes, hourly, every 3, 6 or 12 hours, and daily. The default is
 hourly, including a check when the shell starts. Changes apply immediately.
 Automatic checks never install packages. **Include AUR packages** is enabled
-by default and can be disabled for repository-only upgrades. Custom intervals
+by default when `yay` is installed and can be disabled for repository-only upgrades. Custom intervals
 are accepted in the saved `UpdatesCheckInterval` preference: `0` disables
 automatic checks; integer values from `15` to `10080` specify minutes.
 
+**Hide icon when no updates** hides the bar icon when idle with no updates.
+It stays visible during checks or installations and when a check fails.
+This option is off by default and applies immediately.
+
 **Update** requests administrator approval
 through the shell's existing sudo askpass dialog, then runs a full
-`yay -Syu` upgrade (or `sudo -A pacman -Syu` with AUR disabled). AUR builds run
+`yay -Syu` upgrade (or `sudo -A pacman -Syu` with AUR disabled or `yay` absent). AUR builds run
 as the current user. The GUI uses `--noconfirm`: package-manager questions use
 their default answers and build-file review is skipped. Use your usual terminal
 workflow when an upgrade needs interactive review or choices.

@@ -15,7 +15,18 @@ assert.equal(settingValue('UpdatesCheckInterval', '73'), 73);
 for (const value of ['', null, false, true, 'NaN', Infinity, '14', '-1', '10081', '60.5'])
   assert.throws(() => settingValue('UpdatesCheckInterval', value), /Invalid/);
 assert.equal(settingValue('UpdatesIncludeAUR', 'false'), false);
+assert.equal(settingValue('UpdatesHideWhenEmpty', 'true'), true);
+assert.equal(settingValue('UpdatesHideWhenEmpty', 'false'), false);
+assert.throws(() => settingValue('UpdatesHideWhenEmpty', 'yes'), /Invalid/);
 assert.deepEqual(Object.fromEntries(Object.keys(updateDefaults).map(key => [key, readSettings({})[key]])), updateDefaults);
+
+const emptyBar = { UpdatesAvailable: true, UpdatesCount: 0 };
+assert.equal(updatesIndicator({ ...readSettings({}), ...emptyBar }).visible, true, 'Keep the icon visible by default');
+const hideEmpty = { ...readSettings({ UpdatesHideWhenEmpty: true }), ...emptyBar };
+assert.equal(updatesIndicator(hideEmpty).visible, false);
+for (const activity of [{ UpdatesCount: 2 }, { UpdatesChecking: true }, { UpdatesInstalling: true }, { UpdatesError: 'Offline' }])
+  assert.equal(updatesIndicator({ ...hideEmpty, ...activity }).visible, true, 'Updates, activity and errors stay visible');
+assert.equal(updatesIndicator({ ...hideEmpty, UpdatesAvailable: false, UpdatesCount: 2 }).visible, false);
 
 let time = 100000, nextTimer = 0, hold, release, repoResult, aurResult, approval = 0, upgrade = 0;
 const timers = new Map(), calls = [], summaries = [], missing = new Set();
@@ -105,8 +116,21 @@ await backend.install();
 assert.match(backend.snapshot().error, /database is locked/);
 assert(!backend.snapshot().installing);
 missing.add('/usr/bin/yay');
-assert.throws(() => backend.install(), /Install yay/);
+repoResult = result(repo);
+const withoutYay = calls.length;
+await backend.check();
+assert.equal(backend.summary().UpdatesAURAvailable, false);
+assert.equal(backend.snapshot().error, '');
+assert.deepEqual(backend.snapshot().packages, parseUpdates(repo, 'Repository'));
+assert.equal(calls.length, withoutYay + 1, 'Missing yay silently skips AUR checks');
+upgrade = 0;
+const fallback = calls.length;
+await backend.install();
+assert.equal(backend.snapshot().error, '');
+assert.deepEqual(calls[fallback + 1].args, ['-A', '/usr/bin/pacman', '-Syu', '--noconfirm', '--color', 'never']);
+assert(!calls.slice(fallback).some(call => call.cmd === '/usr/bin/yay'));
 missing.clear();
+assert.equal(backend.summary().UpdatesAURAvailable, true);
 backend.configure({ UpdatesCheckInterval: 60, UpdatesIncludeAUR: true });
 backend.dispose(); assert.equal(timers.size, 0);
 const last = calls.length; await backend.check(); assert.equal(calls.length, last);
@@ -125,6 +149,12 @@ assert.deepEqual(JSON.parse(await service.request('GetUpdates')), { packages: []
 await service.request('OpenUpdates'); assert.equal(opened, 'updates');
 await service.request('SetSetting', ['UpdatesCheckInterval', '180']);
 assert.equal(saved.UpdatesCheckInterval, 180);
+service.update({ UpdatesAvailable: true, UpdatesCount: 0 });
+await service.request('SetSetting', ['UpdatesHideWhenEmpty', 'true']);
+assert.equal(saved.UpdatesHideWhenEmpty, true);
+assert.equal(updatesIndicator(service.snapshot()).visible, false, 'Saved preference immediately reaches the bar');
+await service.request('SetSetting', ['UpdatesHideWhenEmpty', 'false']);
+assert.equal(updatesIndicator(service.snapshot()).visible, true);
 service.update({ UpdatesInstalling: true });
 await assert.rejects(service.request('SetSetting', ['UpdatesIncludeAUR', 'false']), /finish/);
 assert.equal(saved.UpdatesIncludeAUR, true);
