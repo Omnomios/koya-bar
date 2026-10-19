@@ -80,14 +80,15 @@ async function build() {
   if (shade) kit.play(shade, presets.dropIn());
   await blink.play('blink');
   const model = new LauncherModel();
-  let ready = false, launching = false, preedit = '', message = '', board, queue = Promise.resolve(), revision = 0;
+  let ready = false, launching = false, preedit = '', message = '', board, boardShape, rows = [], queue = Promise.resolve(), revision = 0;
   const iconJobs = new Map();
   const cache = Process.getEnv('XDG_CACHE_HOME', Process.getEnv('HOME', '') + '/.cache');
   const loadIcon = app => {
-    if (!iconJobs.has(app.id)) iconJobs.set(app.id, Desktop.resolveIcon(app.iconName || '').then(async texture => {
+    const key = app.id + ':' + (app.iconName || '');
+    if (!iconJobs.has(key)) iconJobs.set(key, Desktop.resolveIcon(app.iconName || '').then(async texture => {
       await Assets.mount(cache + '/koya/icons', '/rom'); app.icon = texture; return texture;
     }));
-    return iconJobs.get(app.id);
+    return iconJobs.get(key);
   };
   const render = () => {
     const token = ++revision;
@@ -101,36 +102,54 @@ async function build() {
       ]);
       const position = await UI.getTextCaretPosition(win, queryLabel, model.query || preedit ? model.cursor + Array.from(preedit).length : 0);
       const scroll = Math.max(0, Number(position.x || 0) - inner + 40);
-      const [nextBoard] = await Promise.all([
-        UI.createElement(win, { layout: { type: 'column', gap: 2 }, item: { size: { x: 'auto', y: Math.max(1, model.results.length) * RESULT_ROW_HEIGHT } } }),
+      await Promise.all([
         UI.setPosition(win, queryLabel, { x: -scroll, y: 0 }),
-        UI.setLayoutPosition(win, caret, { x: 12 + Number(position.x || 0) - scroll, y: (SEARCH_FIELD_HEIGHT - 20) / 2 }),
-        ...(board ? [UI.destroyElement(win, board)] : [])
+        UI.setLayoutPosition(win, caret, { x: 12 + Number(position.x || 0) - scroll, y: (SEARCH_FIELD_HEIGHT - 20) / 2 })
       ]);
-      board = nextBoard;
-      await UI.attach(win, results.content, board);
-      await children(win, board, model.results.map(async (app, index) => {
-        // Results sit directly on the surface; only the selection is filled.
-        const target = await row(win, null, inner, RESULT_ROW_HEIGHT - 2, () => { model.selected = index; launch(); },
-          { colour: index === model.selected ? SURFACE.selected : CLEAR, hover: index === model.selected ? SURFACE.selected : undefined, gap: 10, radius: RADIUS.control });
-        const [glyph, detail] = await children(win, target, [
-          icon(win, null, app.icon || '/rom/assets/launcher/application.png', 24, 28, RESULT_ROW_HEIGHT - 2),
-          UI.createElement(win, { layout: { type: 'row', alignItems: 'center', gap: SPACE.s }, item: { size: { x: inner - 62, y: RESULT_ROW_HEIGHT - 2 } } })
-        ]);
-        if (!app.icon) loadIcon(app).then(texture => {
-          if (texture && token === revision) return UI.setTexture(win, glyph, texture);
-        }).catch(error => Log.error('Launcher icon: ' + error));
-        await Promise.all([
-          UI.setElementId(win, target, 'launcher-app-' + app.id),
-          children(win, detail, [
-            // Name and description share one line, so more results fit.
-            label(win, null, app.name, TYPE.body, Math.round((inner - 62) * 0.45), RESULT_ROW_HEIGHT - 2, index === model.selected ? TEXT.accent : TEXT.primary),
-            label(win, null, clip(app.genericName || app.comment || app.executable, Math.floor(((inner - 62) * 0.55 - SPACE.s) / 6.5)), TYPE.caption, Math.round((inner - 62) * 0.55) - SPACE.s, RESULT_ROW_HEIGHT - 2, TEXT.secondary)
-          ])
-        ]);
-        return target;
+      const shape = JSON.stringify([ready, model.results.map(app => app.id)]);
+      if (shape !== boardShape) {
+        if (board) await UI.destroyElement(win, board);
+        board = await UI.createElement(win, { layout: { type: 'column', gap: 2 }, item: { size: { x: 'auto', y: Math.max(1, model.results.length) * RESULT_ROW_HEIGHT } } });
+        const owner = board; rows = [];
+        await UI.attach(win, results.content, board);
+        await children(win, board, model.results.map(async (app, index) => {
+          // Results sit directly on the surface; only the selection is filled.
+          const target = await row(win, null, inner, RESULT_ROW_HEIGHT - 2, () => { model.selected = index; launch(); },
+            { colour: index === model.selected ? SURFACE.selected : CLEAR, gap: 10, radius: RADIUS.control });
+          const [glyph, detail] = await children(win, target, [
+            icon(win, null, app.icon || '/rom/assets/launcher/application.png', 24, 28, RESULT_ROW_HEIGHT - 2),
+            UI.createElement(win, { layout: { type: 'row', alignItems: 'center', gap: SPACE.s }, item: { size: { x: inner - 62, y: RESULT_ROW_HEIGHT - 2 } } })
+          ]);
+          if (!app.icon) loadIcon(app).then(texture => {
+            if (texture && board === owner) return UI.setTexture(win, glyph, texture);
+          }).catch(error => Log.error('Launcher icon: ' + error));
+          rows[index] = { target, glyph, iconName: app.iconName };
+          await Promise.all([
+            UI.setElementId(win, target, 'launcher-app-' + app.id),
+            children(win, detail, [
+              // Name and description share one line, so more results fit.
+              label(win, null, app.name, TYPE.body, Math.round((inner - 62) * 0.45), RESULT_ROW_HEIGHT - 2, index === model.selected ? TEXT.accent : TEXT.primary)
+                .then(name => { rows[index].name = name; return name; }),
+              label(win, null, clip(app.genericName || app.comment || app.executable, Math.floor(((inner - 62) * 0.55 - SPACE.s) / 6.5)), TYPE.caption, Math.round((inner - 62) * 0.55) - SPACE.s, RESULT_ROW_HEIGHT - 2, TEXT.secondary)
+                .then(description => { rows[index].description = description; return description; })
+            ])
+          ]);
+          return target;
+        }));
+        if (ready && !model.results.length) await label(win, board, 'No matching applications', TYPE.body, inner, RESULT_ROW_HEIGHT, TEXT.secondary);
+        boardShape = shape;
+      }
+      await Promise.all(rows.flatMap((item, index) => {
+        const app = model.results[index];
+        if (item.iconName !== app.iconName) {
+          item.iconName = app.iconName; const owner = board;
+          loadIcon(app).then(texture => { if (texture && board === owner) return UI.setTexture(win, item.glyph, texture); })
+            .catch(error => Log.error('Launcher icon: ' + error));
+        }
+        return [UI.setBoxColour(win, item.target, index === model.selected ? SURFACE.selected : CLEAR),
+          UI.setTextColour(win, item.name, index === model.selected ? TEXT.accent : TEXT.primary), UI.setTextString(win, item.name, app.name),
+          UI.setTextString(win, item.description, clip(app.genericName || app.comment || app.executable, Math.floor(((inner - 62) * 0.55 - SPACE.s) / 6.5)))];
       }));
-      if (ready && !model.results.length) await label(win, board, 'No matching applications', TYPE.body, inner, RESULT_ROW_HEIGHT, TEXT.secondary);
       const count = model.results.length;
       // The scroll range follows the results; keep the selection in view.
       await results.setContentHeight(Math.max(1, count) * RESULT_ROW_HEIGHT);

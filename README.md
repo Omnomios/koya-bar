@@ -62,6 +62,10 @@ you don't like how something looks or behaves, change it.
   <a href="docs/screenshots/theme-editor.jpg"><img src="docs/screenshots/theme-editor.jpg" width="400" alt="Theme editor in Settings"></a>
   <a href="docs/screenshots/power.jpg"><img src="docs/screenshots/power.jpg" width="400" alt="Battery and power popover"></a>
   <a href="docs/screenshots/ssh-prompt.jpg"><img src="docs/screenshots/ssh-prompt.jpg" width="400" alt="SSH key passphrase prompt"></a>
+  <a href="docs/screenshots/updates.jpg"><img src="docs/screenshots/updates.jpg" width="400" alt="OS updates with repository and AUR packages"></a>
+  <a href="docs/screenshots/displays.jpg"><img src="docs/screenshots/displays.jpg" width="400" alt="Displays arrangement and settings"></a>
+  <a href="docs/screenshots/volume.jpg"><img src="docs/screenshots/volume.jpg" width="400" alt="Volume popover with sound output selection"></a>
+  <a href="docs/screenshots/session-menu.jpg"><img src="docs/screenshots/session-menu.jpg" width="400" alt="Session menu behind the Koya logo"></a>
 </p>
 
 ## What's included
@@ -71,6 +75,7 @@ you don't like how something looks or behaves, change it.
 | **Bar** | Workspaces, clock, OS update count, network, battery and power modes, volume and notifications, with a bar and wallpaper on every monitor |
 | **Application picker** | Search across desktop entries that ignores case and accents, driven entirely from the keyboard |
 | **Settings** | Theme editor with live preview, wallpapers, clock format and update check interval |
+| **Displays** | Drag monitors into position; set resolution, refresh rate, scale, rotation, mirroring, VRR, colour and HDR |
 | **OS updates** | Official repository and AUR updates, package versions, administrator approval and installation output |
 | **Wi-Fi** | Join, forget and manage saved networks |
 | **Account** | Profile picture, display name, password and automatic login |
@@ -103,6 +108,7 @@ Each app also runs on its own. Bind `launcher.sh` to a shortcut in place of
 ```bash
 ./launcher.sh     # Application picker
 ./settings.sh     # Theme, wallpaper and clock
+./displays.sh     # Monitor arrangement, scale and colour
 ./account.sh      # Profile, password and sign-in options
 ./wifi.sh         # Wireless networks
 ./updates.sh      # OS updates (requires the running shell)
@@ -193,6 +199,39 @@ Preferences are saved atomically to
 `${XDG_CONFIG_HOME:-~/.config}/koya-bar/settings.json`. Settings and Account
 release their input and hide while a file chooser or an authorisation prompt
 is open.
+
+## Displays
+
+Open **Settings → Displays**, the Displays desktop entry, or `./displays.sh`.
+Drag monitor tiles to match their physical positions; edges snap together.
+Click a tile to select it (displays that are off or mirroring wait as chips
+along the bottom of the arrangement). Each display can **Extend** the desktop,
+**Mirror** another, or be **Off**; at least one must stay on. An extended
+display has resolution, refresh rate, scale and rotation in one card.
+**Arrange** lines displays up in a row after a scale or rotation change.
+
+Scale choices are calculated for the selected resolution using Hyprland's
+whole-pixel and 1/120-step checks. Changing resolution preserves the scale
+where possible, or selects the nearest valid value and shows the adjustment.
+
+**Advanced** includes VRR policy, colour depth, colour space, SDR transfer, an
+ICC profile, HDR and wide-gamut overrides, SDR brightness/saturation and
+luminance levels, a mirrored image (flip) and exact position. These require
+Hyprland's Lua monitor API (0.55 or newer); actual support depends on the
+display and graphics driver.
+
+**Apply** previews the layout for 20 seconds. **Keep** saves it;
+**Revert**, timeout, locking the session, or closing Displays restores the
+previous setup. The shell owns the timeout, so it also runs if the app crashes.
+It verifies the actual mode and geometry before offering to keep a change.
+
+Layouts are saved atomically in
+`${XDG_CONFIG_HOME:-~/.config}/koya-bar/displays.json`, separately for each
+connected monitor combination. The shell reapplies confirmed settings after
+login, reconnection and Hyprland config reloads. Your Hyprland configuration
+file remains editable; the saved display settings take precedence while Koya
+Shell runs. To return control to the Hyprland configuration, remove the saved
+layout, restart Koya Shell, then reload Hyprland.
 
 ## OS updates
 

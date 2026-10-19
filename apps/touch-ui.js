@@ -116,7 +116,7 @@ export async function button(win, parent, label, width, height, handler, options
     const SPINNER_SIZE = 14, SPINNER_GAP = 8, lineHeight = options.labelHeight || 24, colour = options.labelColour || options.accent || TEXT.primary;
     const [line, spin, labelId, spacer] = await Promise.all([
       UI.createElement(win, { layout: { type: 'row', justifyContent: 'center', alignItems: 'center', gap: SPINNER_GAP }, item: { size: { x: width, y: lineHeight } } }),
-      throbber(win, null, SPINNER_SIZE, colour, lineHeight),
+      throbber(win, null, SPINNER_SIZE, options.spinnerColour || colour, lineHeight),
       text(win, null, label, options.size || TYPE.body, width - 2 * (SPINNER_SIZE + SPINNER_GAP), lineHeight, colour, options.font, 'left'),
       UI.createElement(win, { item: { size: { x: SPINNER_SIZE, y: lineHeight } } })
     ]);

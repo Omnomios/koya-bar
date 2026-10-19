@@ -216,7 +216,8 @@ export default async (options = {}) => {
     await paint();
     const actions = await UI.createElement(win, host({ layout: { type: 'column', gap: SPACE.s }, item: { size: { x: width, y: 2 * MIN_CONTROL_SIZE + SPACE.s } } }));
     await UI.attach(win, page.el, actions);
-    let primaryFeedback, connected = network().connected;
+    let primaryFeedback, primaryLabel;
+    const connected = network().connected;
     const primary = async () => {
       if (!ok() || latest.working) return;
       primaryFeedback?.begin().catch(() => {});
@@ -226,8 +227,8 @@ export default async (options = {}) => {
       if (latest.error) { flash(latest.error, TEXT.accent, 4000); shake(actions); }
     };
     const [primaryButton, forget] = await children(win, actions, [pill(win, null, connected ? 'Disconnect' : 'Connect', width, primary,
-      connected ? { labelColour: TEXT.accent, size: TYPE.body } : { colour: SURFACE.accent, labelColour: TEXT.onAccent, size: TYPE.body,
-        onFeedback: value => { primaryFeedback = value; } }),
+      { colour: connected ? SURFACE.control : SURFACE.accent, labelColour: connected ? TEXT.accent : TEXT.onAccent, size: TYPE.body,
+        spinnerColour: TEXT.primary, onLabel: id => { primaryLabel = id; }, onFeedback: value => { primaryFeedback = value; } }),
       pill(win, null, 'Forget network', width, async () => {
       if (!ok() || latest.working) return;
       const name = network().name;
@@ -238,15 +239,22 @@ export default async (options = {}) => {
       setTimeout(() => flash('Forgot ' + name, TEXT.accent), 320);
     })]);
     await Promise.all([UI.setElementId(win, forget, 'wifi-forget-' + idOf(detail)),
-      ...(connected ? [UI.setElementId(win, primaryButton, 'wifi-disconnect-' + idOf(detail))] : [])]);
+      UI.setElementId(win, primaryButton, (connected ? 'wifi-disconnect-' : 'wifi-connect-') + idOf(detail))]);
     page.items.push(actions);
     // Facts card and actions; the panel fits to this.
     page.height = SPACE.xs + 3 * 36 + 2 * SPACE.xs + SPACE.m + 2 * MIN_CONTROL_SIZE + SPACE.s;
     page.update = async () => {
       if (!page.alive) return;
-      await paint();
-      // The primary action changes meaning with the connection: rebuild it.
-      if (network().connected !== connected) frame.go(detailPageBuild, { title: network().name, back: true });
+      const connected = network().connected;
+      const caption = connected ? 'Disconnect' : 'Connect';
+      page.hint = connected ? 'Connected' : 'Saved network';
+      await Promise.all([paint(), frame.refreshHint(),
+        UI.setTextString(win, primaryLabel, caption),
+        UI.setBoxColour(win, primaryButton, connected ? SURFACE.control : SURFACE.accent),
+        UI.setTextColour(win, primaryLabel, connected ? TEXT.accent : TEXT.onAccent),
+        UI.setElementId(win, primaryButton, (connected ? 'wifi-disconnect-' : 'wifi-connect-') + idOf(detail))]);
+      const end = await UI.getTextCaretPosition(win, primaryLabel, caption.length);
+      await UI.setLayoutSize(win, primaryLabel, { x: Math.ceil(Number(end?.x || 0)) + 2, y: MIN_CONTROL_SIZE });
     };
     return page;
   };
