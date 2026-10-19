@@ -9,6 +9,7 @@ import { createNotifications } from './notifications.js';
 import { createVolume } from './volume.js';
 import { createNetworkPopup } from './network-popup.js';
 import { createPowerPopup } from './power-popup.js';
+import { createSessionMenu } from './session-menu.js';
 import { createWorkspaces, WORKSPACE_ROW } from './workspaces.js';
 import { speakerStatus } from './audio-model.js';
 import { windowLayout } from './window-layout.js';
@@ -25,11 +26,11 @@ import { updatesIndicator } from './updates-model.js';
 // the row (cross-axis fill), so chips reach the top edge of the screen for
 // the pointer; their faces, and the non-interactive items, take a top margin
 // so they centre on the strip.
-const CLOCK_GAP = 8, DATE_WIDTH = 90, ICON_SIZE = 18, STATUS_BUTTON_WIDTH = 34, BATTERY_BUTTON_WIDTH = 66, BAR_PADDING = 6;
+const CLOCK_GAP = 8, BRAND_GAP = 6, DATE_WIDTH = 90, ICON_SIZE = 18, STATUS_BUTTON_WIDTH = 34, BATTERY_BUTTON_WIDTH = 66, BAR_PADDING = 6;
 const STRIP_MARGIN = { t: BAR.top, r: 0, b: 0, l: 0 };
 const clockGroupWidth = view => view.timeWidth + (view.showDate ? CLOCK_GAP + DATE_WIDTH : 0);
 
-export default async ({ display, notifications: shared, volume: sharedVolume, initialState = {} } = {}) => {
+export default async ({ display, notifications: shared, volume: sharedVolume, sessionMenu: sharedSessionMenu, initialState = {} } = {}) => {
   display ||= (await Compositor.listDisplays({ backend: 'wayland' }))[0];
   const win = await Compositor.createWindow({ role: 'bar', edge: 'top', thickness: BAR_HEIGHT,
     reserveSpace: true, display: display.display, namespace: 'koya-top-bar', transparent: true,
@@ -37,6 +38,7 @@ export default async ({ display, notifications: shared, volume: sharedVolume, in
   const volume = sharedVolume || createVolume(display);
   const network = createNetworkPopup();
   const power = createPowerPopup();
+  const sessionMenu = sharedSessionMenu || createSessionMenu();
   const notifications = shared || createNotifications(display);
   const texture = name => '/rom/assets/status/' + name + '.png';
   const workspaces = createWorkspaces(win, display.display);
@@ -70,7 +72,7 @@ export default async ({ display, notifications: shared, volume: sharedVolume, in
   const updatesWidth = indicator => STATUS_BUTTON_WIDTH + (indicator.text ? 4 + indicator.text.length * 8 : indicator.busy ? 16 : 0);
   // Prepare every independent node together. Siblings are created in their
   // authored order and attached in that same order, even if replies reverse.
-  const [root, strip, edge, row, centre, brand, dateTime, clock, date, spacer,
+  const [root, strip, edge, row, centre, brandChip, brand, dateTime, clock, date, spacer,
     updateChip, updateRow, updateGlyph, updateCount, updateSpinner, updateWarning, speakerChip, speakerGlyph, networkChip, networkGlyph, warning,
     batteryChip, batteryRow, batteryIcon, level, charging, percentage, divider, bellChip, bell] = await Promise.all([
     UI.createElement(win, { layout: { type: 'none' }, item: { size: AUTO }, onHover: surfaceCursor(win) }),
@@ -80,7 +82,10 @@ export default async ({ display, notifications: shared, volume: sharedVolume, in
       item: { size: AUTO, margin: { t: BAR.top, r: BAR.side, b: 0, l: BAR.side } }, contentAlign: 'fill' }),
     UI.createElement(win, { layout: { type: 'row', alignItems: 'center', gap: 2, padding: { t: 0, r: BAR.side + BAR_PADDING, b: 0, l: BAR.side + BAR_PADDING } }, item: { size: AUTO } }),
     UI.createElement(win, { id: 'top-bar-workspaces', layout: WORKSPACE_ROW, item: { size: AUTO } }),
-    icon(win, null, '/rom/assets/brand/koya-fish.png', 16, 26, 'auto'),
+    chip(STATUS_BUTTON_WIDTH, () => anchored(brandChip.id, async (output, anchor) => {
+      await Promise.all([volume.close(), network.close(), power.close(), notifications.close()]); await sessionMenu.toggle(output, anchor);
+    })),
+    icon(win, null, '/rom/assets/brand/koya-fish.png', 16, 'auto', 'auto'),
     UI.createElement(win, { id: 'top-bar-datetime', layout: { type: 'row', gap: CLOCK_GAP, alignItems: 'center' },
       item: { size: { x: clockGroupWidth(initialClock), y: 'auto' }, margin: STRIP_MARGIN } }),
     text(win, null, initialClock.time, 13, initialClock.timeWidth, 'auto', TEXT.primary, FONT_STRONG, 'left'),
@@ -88,7 +93,7 @@ export default async ({ display, notifications: shared, volume: sharedVolume, in
     UI.createElement(win, { item: { size: AUTO, flexGrow: 1 } }),
     chip(updatesWidth(initialIndicator), async () => {
       try {
-        await Promise.all([volume.close(), network.close(), power.close(), notifications.close()]);
+        await Promise.all([sessionMenu.close(), volume.close(), network.close(), power.close(), notifications.close()]);
         await call('OpenUpdates');
       } catch (error) { Log.error('Open updates: ' + error); }
     }),
@@ -99,17 +104,17 @@ export default async ({ display, notifications: shared, volume: sharedVolume, in
     UI.createElement(win, { renderable: { type: 'circle', aabb: { min: { x: 0, y: 0 }, max: { x: 6, y: 6 } }, resolution: 16, colour: HEALTH.warningIndicator },
       item: { size: AUTO }, contentAlign: { x: 'center', y: 'center' } }),
     chip(STATUS_BUTTON_WIDTH, () => anchored(speakerChip.id, async (output, anchor) => {
-      await Promise.all([network.close(), power.close(), notifications.close()]); await volume.toggle(output, anchor);
+      await Promise.all([sessionMenu.close(), network.close(), power.close(), notifications.close()]); await volume.toggle(output, anchor);
     })),
     icon(win, null, texture('volume-unavailable'), ICON_SIZE, 'auto', 'auto'),
     chip(STATUS_BUTTON_WIDTH, () => anchored(networkChip.id, async (output, anchor) => {
-      await Promise.all([volume.close(), power.close(), notifications.close()]); await network.toggle(output, anchor);
+      await Promise.all([sessionMenu.close(), volume.close(), power.close(), notifications.close()]); await network.toggle(output, anchor);
     })),
     icon(win, null, texture('wifi-off'), ICON_SIZE, 'auto', 'auto'),
     UI.createElement(win, { renderable: { type: 'circle', aabb: { min: { x: 0, y: 0 }, max: { x: 6, y: 6 } }, resolution: 16, colour: HEALTH.warningIndicator },
       item: { size: AUTO }, contentAlign: { x: 'center', y: 'center' } }),
     chip(BATTERY_BUTTON_WIDTH, () => anchored(batteryChip.id, async (output, anchor) => {
-      await Promise.all([volume.close(), network.close(), notifications.close()]); await power.toggle(output, anchor);
+      await Promise.all([sessionMenu.close(), volume.close(), network.close(), notifications.close()]); await power.toggle(output, anchor);
     })),
     UI.createElement(win, { layout: { type: 'row', gap: 4, justifyContent: 'center', alignItems: 'center' }, item: { size: AUTO } }),
     UI.createElement(win, { layout: { type: 'none' }, item: { size: { x: ICON_SIZE + 4, y: 'auto' } } }),
@@ -119,7 +124,7 @@ export default async ({ display, notifications: shared, volume: sharedVolume, in
     UI.createElement(win, { renderable: { type: 'box', colour: BORDER.divider, aabb: { min: { x: 0, y: 0 }, max: { x: 1, y: 14 } } },
       item: { size: { x: 9, y: 'auto' }, margin: STRIP_MARGIN }, contentAlign: { x: 'center', y: 'center' } }),
     chip(STATUS_BUTTON_WIDTH, () => anchored(bellChip.id, async output => {
-      await Promise.all([volume.close(), network.close(), power.close()]); await notifications.open(output);
+      await Promise.all([sessionMenu.close(), volume.close(), network.close(), power.close()]); await notifications.open(output);
     })),
     icon(win, null, '/rom/assets/launcher/bell.png', ICON_SIZE, 'auto', 'auto'),
     Compositor.setClearColor(win, 0, 0, 0, 0)
@@ -127,7 +132,8 @@ export default async ({ display, notifications: shared, volume: sharedVolume, in
   const speaker = speakerChip.id, networkTarget = networkChip.id, battery = batteryChip.id, target = bellChip.id;
   await Promise.all([
     UI.setHitTarget(win, strip, false), UI.setHitTarget(win, edge, false), UI.setHitTarget(win, centre, false),
-    ...[updateChip, speakerChip, networkChip, batteryChip, bellChip].map(chip => UI.attach(win, chip.id, chip.face)),
+    ...[brandChip, updateChip, speakerChip, networkChip, batteryChip, bellChip].map(chip => UI.attach(win, chip.id, chip.face)),
+    UI.attach(win, brandChip.face, brand),
     UI.attach(win, updateRow, updateGlyph), UI.attach(win, updateRow, updateCount), UI.attach(win, updateRow, updateSpinner.id), UI.attach(win, updateChip.face, updateRow),
     UI.attach(win, updateChip.face, updateWarning), UI.setPosition(win, updateWarning, { x: ICON_SIZE / 2, y: -ICON_SIZE / 2 + 2 }), UI.setHitTarget(win, updateWarning, false),
     UI.attach(win, dateTime, clock), UI.attach(win, dateTime, date),
@@ -136,10 +142,10 @@ export default async ({ display, notifications: shared, volume: sharedVolume, in
     UI.attach(win, batteryIcon, level), UI.attach(win, batteryIcon, charging),
     UI.attach(win, batteryRow, batteryIcon), UI.attach(win, batteryRow, percentage), UI.attach(win, batteryChip.face, batteryRow),
     UI.attach(win, bellChip.face, bell),
-    ...[brand, dateTime, spacer, updateChip.id, speaker, networkTarget, battery, divider, target].map(id => UI.attach(win, row, id)),
+    ...[brandChip.id, dateTime, spacer, updateChip.id, speaker, networkTarget, battery, divider, target].map(id => UI.attach(win, row, id)),
     ...[strip, edge, row, centre].map(id => UI.attach(win, root, id)),
     UI.setElementId(win, charging, 'top-bar-battery-charging'), UI.setEnabled(win, charging, false), UI.setHitTarget(win, charging, false),
-    UI.setMargin(win, brand, STRIP_MARGIN), UI.setElementId(win, brand, 'top-bar-brand'), UI.setElementId(win, speaker, 'top-bar-volume'),
+    UI.setElementId(win, brandChip.id, 'top-bar-brand'), UI.setMargin(win, brandChip.id, { t: 0, r: BRAND_GAP, b: 0, l: 0 }), UI.setElementId(win, brand, 'top-bar-brand-icon'), UI.setElementId(win, speaker, 'top-bar-volume'),
     UI.setElementId(win, networkTarget, 'top-bar-network'), UI.setElementId(win, target, 'top-bar-notifications'),
     UI.setElementId(win, battery, 'top-bar-battery'), UI.setElementId(win, percentage, 'top-bar-battery-percent'),
     UI.setElementId(win, clock, 'top-bar-clock'), UI.setElementId(win, date, 'top-bar-date'), UI.setEnabled(win, date, initialClock.showDate),
@@ -181,7 +187,7 @@ export default async ({ display, notifications: shared, volume: sharedVolume, in
   // Audio and notification services are shared between monitors.
   let updates = Promise.resolve(), previous = '';
   const disconnect = connect('top-bar', value => {
-    const popupUpdate = Promise.all([network.onState(value), power.onState(value)]);
+    const popupUpdate = Promise.all([network.onState(value), power.onState(value), sessionMenu.onState(value)]);
     const nextClock = clockPreferences(value), nextClockKey = JSON.stringify(nextClock);
     let clockUpdate;
     if (nextClockKey !== clockKey) {
@@ -213,12 +219,12 @@ export default async ({ display, notifications: shared, volume: sharedVolume, in
     const size = { x: Number(updated.logical_width || updated.width), y: Number(updated.logical_height || updated.height) };
     if (notifications.display.display === display.display) await notifications.resize(size);
     await volume.resize({ ...size, display: display.display });
-    await Promise.all([network.resize(), power.resize()]);
+    await Promise.all([network.resize(), power.resize(), sessionMenu.resize({ display: display.display })]);
   });
-  return { window: win, notifications, volume, dispose: async () => {
+  return { window: win, notifications, volume, sessionMenu, dispose: async () => {
     disposed = true; clearTimeout(timer); disconnect(); unsubscribe(); unsubscribeVolume(); stopLayout(); workspaces.dispose();
     await volume.resize({ display: display.display });
-    await Promise.all([network.dispose(), power.dispose()]);
+    await Promise.all([network.dispose(), power.dispose(), sessionMenu.resize({ display: display.display })]);
     await destroySurface(win);
   } };
 };

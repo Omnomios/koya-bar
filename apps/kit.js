@@ -191,7 +191,7 @@ export function createKit(win) {
       item: { size: { x: 7, y: 7 } } }) : undefined;
     if (marker) await UI.attach(win, line, marker);
     const caption = await text(win, line, subtitle, TYPE.caption, 'auto', 18, TEXT.secondary, FONT, 'left');
-    return { id: box, heading, caption, dot: marker, setDot: health => marker && UI.setCircleColour(win, marker, HEALTH[health]) };
+    return { id: box, heading, caption, line, dot: marker, setDot: health => marker && UI.setCircleColour(win, marker, HEALTH[health]) };
   };
 
   // A native scroll viewport (the engine moves the content in layout, so

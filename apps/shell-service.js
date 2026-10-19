@@ -6,7 +6,7 @@ export const shellStatePayload = state => Object.fromEntries(Object.entries(stat
   [key, typeof value === 'number' && (!Number.isInteger(value) || value < -2147483648 || value > 2147483647)
     ? { _t: 'd', _v: value } : value]));
 
-export function createShellService({ applications, stored, persist, openBuiltin, setPowerProfile, setChargeControl, updates, changed = () => {} }) {
+export function createShellService({ applications, stored, persist, openBuiltin, setPowerProfile, setChargeControl, updates, sessionActions, changed = () => {} }) {
   let settings = readSettings(stored), saving = Promise.resolve();
   let state = { Active: true, ScreenState: 'unlocked', PowerMenuState: 'closed' };
   const snapshot = () => ({ ...state, ...settings });
@@ -22,6 +22,10 @@ export function createShellService({ applications, stored, persist, openBuiltin,
       case 'OpenWifi': await openBuiltin('wifi'); return;
       case 'OpenUpdates': await openBuiltin('updates'); return;
       case 'GetUpdates': return JSON.stringify(updates.snapshot());
+      case 'GetSessionActions': return JSON.stringify(await sessionActions.list());
+      case 'RunSessionAction':
+        if (!state.Active || state.ScreenState !== 'unlocked' || !sessionActions) throw new Error('Session actions require an active unlocked session');
+        await sessionActions.run(args[0]); return;
       case 'CheckUpdates':
         updates.check(); return snapshot();
       case 'InstallUpdates':

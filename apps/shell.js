@@ -18,12 +18,15 @@ import { createNotifications } from './notifications.js';
 import { createVolume } from './volume.js';
 import { authentication } from './authentication.js';
 import { updatesService } from './updates-process.js';
+import { createSessionActions, logoutHyprland } from './session-actions.js';
+import { createSessionMenu } from './session-menu.js';
 
 const NAME = 'org.koya.Shell1', PATH = '/org/koya/Shell1';
 const methods = {
   GetState: ['', 'a{sv}'], Ready: ['s', ''], GetApplications: ['', 'aa{sv}'], ResolveIcon: ['s', 's'],
   OpenSettings: ['', ''], OpenWifi: ['', ''], OpenUpdates: ['', ''], GetUpdates: ['', 's'],
   CheckUpdates: ['', 'a{sv}'], InstallUpdates: ['', 'a{sv}'],
+  GetSessionActions: ['', 's'], RunSessionAction: ['s', ''],
   SetSetting: ['ss', 'a{sv}'], SetPowerProfile: ['s', 'a{sv}'], SetChargeControl: ['sb', 'a{sv}']
 };
 export async function startShell() {
@@ -56,8 +59,9 @@ export async function startShell() {
   const profiles = createPowerProfiles(System, values => service.update(values));
   const battery = createBatteryStatus(System, values => service.update(values));
   const updates = updatesService({ settings: stored, changed: values => service.update(values) });
+  const sessionActions = createSessionActions({ bus: System, lock: () => openBuiltin('lock'), logout: () => logoutHyprland(command => Hypr.send(command)) });
   const service = createShellService({ applications, stored, setPowerProfile: profiles.setProfile,
-    setChargeControl: battery.setChargeControl, updates,
+    setChargeControl: battery.setChargeControl, updates, sessionActions,
     persist: text => Desktop.savePreferences(text), openBuiltin,
     changed: state => {
       updates.configure(state);
@@ -89,11 +93,12 @@ export async function startShell() {
   const bars = new Map();
   const sharedNotifications = createNotifications(displays[0]);
   const sharedVolume = createVolume(displays[0]);
+  const sharedSessionMenu = createSessionMenu();
   const syncDisplays = async outputs => {
     displays = outputs || await Compositor.listDisplays({ backend: 'wayland' });
     await Promise.all(displays.filter(display => !bars.has(display.display)).map(async display => {
       const [background, top] = await Promise.all([wallpaperReady.then(() => wallpaper({ display })),
-        topBar({ display, notifications: sharedNotifications, volume: sharedVolume, initialState: service.snapshot() })]);
+        topBar({ display, notifications: sharedNotifications, volume: sharedVolume, sessionMenu: sharedSessionMenu, initialState: service.snapshot() })]);
       bars.set(display.display, { background, top });
     }));
     await Promise.all([...bars].filter(([name]) => !displays.some(display => display.display === name)).map(async ([name, windows]) => {

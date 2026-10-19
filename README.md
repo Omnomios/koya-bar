@@ -134,13 +134,13 @@ Install only the services for the features you use:
 | Network and Wi-Fi | NetworkManager |
 | Battery and charge control | UPower |
 | Power modes | power-profiles-daemon |
-| Audio | PulseAudio or PipeWire's PulseAudio server, with `pactl` |
+| Audio | PulseAudio or PipeWire's PulseAudio server, with `pactl`; optional pavucontrol for advanced settings |
 | Account profiles | AccountsService (`accountsservice` on Arch) |
 | Image chooser | xdg-desktop-portal and a file-chooser backend, such as GTK |
 | Login greeter | greetd |
 | SSH prompts | OpenSSH and an existing ssh-agent |
 | Authorisation prompts | polkit; sudo for `sudo -A` |
-| OS updates (Arch Linux) | pacman, pacman-contrib (`checkupdates`), sudo; yay for AUR support |
+| OS updates (Arch Linux) | pacman, pacman-contrib (`checkupdates`), sudo; yay, base-devel and git for AUR support |
 | Idle locking | hypridle |
 
 `run.sh` uses the installed Koya and builds this project's native modules into
@@ -150,13 +150,20 @@ plugins. Assets default to `../share/koya/assets` relative to the executable.
 
 ## Bar controls
 
+- **Koya logo:** opens the session menu with Lock, Log Out, supported sleep
+  options, Restart and Shut Down. Log Out, Restart and Shut Down ask for
+  confirmation. Power actions use logind's normal inhibitors and authorisation.
 - **Network:** connection summary, addresses and connectivity; **Configure
   Wi-Fi** opens the Wi-Fi app for joining and managing saved networks.
 - **Battery:** status, time estimates, power rate, energy, health and cycles.
   Supported batteries get an individual charge-control switch using UPower's
   configured preset. Available power modes come from power-profiles-daemon.
-- **Audio:** click the speaker for volume and mute controls. The slider follows
-  the default output and external volume changes.
+- **Audio:** click the speaker for volume, mute and **Sound Output** selection.
+  Outputs show device icons and a checkmark on the active choice. Selecting
+  a device or port changes the default and moves current playback; analogue
+  and digital profile changes retain the current input profile when supported.
+  The list follows connected devices and the slider follows external changes.
+  **Sound Settings** opens pavucontrol when installed.
 - **Notifications:** banners and history with actions, dismissal and clear-all.
   History remains in memory until the shell exits.
 - **OS updates:** update icon and package count; click to open the updates window.
@@ -196,8 +203,9 @@ The running shell owns the checks and installations, sharing results across
 all monitors and windows. Failed checks keep the last known results and show
 the failure rather than reporting that the system is up to date.
 
-On Arch Linux, install `pacman-contrib` for repository checks and `yay` for AUR
-support. Repository checks use
+On Arch Linux, install `pacman-contrib` for repository checks and `yay`,
+`base-devel` and `git` for AUR support. `base-devel` supplies the package build
+tools, including `fakeroot`, GCC and make. Repository checks use
 [`checkupdates`](https://man.archlinux.org/man/checkupdates.8.en), which refreshes
 a separate database without changing the system's package database or asking
 for administrator access. AUR checks use `yay -Qua`. When `yay` is absent,
