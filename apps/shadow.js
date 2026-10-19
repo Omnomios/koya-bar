@@ -41,15 +41,16 @@ function texture(win, level, radius) {
   return textures.get(key);
 }
 // A shadow for a surface of `size` at `position` in a layout-less parent.
+// `origin` matches the surface's, so the two scale together.
 // Resolves to the panel element, or undefined when the texture is unavailable.
-export async function shadow(win, parent, size, position, level = 'popover', radius = RADIUS.surface) {
+export async function shadow(win, parent, size, position, level = 'popover', radius = RADIUS.surface, origin = { x: 0.5, y: 0 }) {
   try {
     const { spec, pad, size: extent, slice } = geometry(level, radius);
     const drawn = { x: size.x + pad * 2, y: size.y + pad * 2 };
     const id = await UI.createElement(win, {
       renderable: { type: 'panel', mode: 'sliced', texture: await texture(win, level, radius),
         frame: { size: drawn, origin: { x: 0, y: 0 }, aabb: { min: { x: 0, y: 0 }, max: { x: extent, y: extent } }, colour: SHADOW_COLOUR[level] },
-        slice: { top: slice, right: slice, bottom: slice, left: slice }, origin: { x: 0.5, y: 0 } },
+        slice: { top: slice, right: slice, bottom: slice, left: slice }, origin },
       // Siblings draw in (order, creation) order, not attach order: sort first.
       item: { position: { x: position.x - pad, y: position.y - pad + spec.offset }, size: drawn, order: -1 }, contentAlign: 'fill'
     });

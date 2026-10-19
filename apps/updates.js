@@ -72,8 +72,8 @@ export default async () => {
   // Rebuild only when the page's structure changes; words and marks update in place.
   const shapeOf = () => {
     const { mode, list } = view();
-    return JSON.stringify([mode, list.map(item => [item.name, item.current, item.next, item.source]),
-      mode === 'waiting' ? latest?.error || '' : '', !!latest?.log, !!hero().action]);
+    return JSON.stringify([mode, list.map(item => [item.name, item.source]),
+      mode === 'waiting' ? (latest?.error || '').split('\n').filter(Boolean).length : 0, !!latest?.log, !!hero().action]);
   };
 
   async function overview() {
@@ -106,11 +106,11 @@ export default async () => {
     }
 
     // A check that failed, source by source.
-    const problems = mode === 'waiting' && latest?.error ? latest.error.split('\n').filter(Boolean) : [];
+    const problems = mode === 'waiting' && latest?.error ? latest.error.split('\n').filter(Boolean) : [], problemLabels = [];
     if (problems.length) {
       const height = problems.length * 22 + SPACE.s * 2;
       const card = await kit.surface('inset', { size: { x: width, y: height }, padding: { t: SPACE.s, r: SPACE.m, b: SPACE.s, l: SPACE.m } });
-      for (const line of problems) await text(win, card.content, line, TYPE.caption, width - SPACE.m * 2, 22, TEXT.accent, FONT, 'left');
+      for (const line of problems) problemLabels.push(await text(win, card.content, line, TYPE.caption, width - SPACE.m * 2, 22, TEXT.accent, FONT, 'left'));
       await UI.attach(win, page.el, card.id); page.items.push(card.id); used += height + SPACE.s;
     }
 
@@ -158,7 +158,9 @@ export default async () => {
         ...(action ? [UI.setHitTarget(win, action, !!ready), UI.setTextString(win, actionLabel, now.action?.label || ''),
           UI.setTextColour(win, actionLabel, !ready ? TEXT.disabled : now.action?.primary ? TEXT.onAccent : TEXT.primary),
           UI.setBoxColour(win, action, ready && now.action?.primary ? SURFACE.accent : SURFACE.control)] : []),
-        page.check?.setBusy(!!latest?.checking)]);
+        page.check?.setBusy(!!latest?.checking),
+        ...problemLabels.map((id, index) => UI.setTextString(win, id, (latest?.error || '').split('\n').filter(Boolean)[index] || '')),
+        ...current.list.map(item => rows.get(item.name)?.update(item))]);
       // A looping pulse while busy; stopping plays one last ripple out.
       if (!!now.pulse !== pulsing) { pulsing = !!now.pulse; badge.pulse(pulsing); }
       if (current.progress && current.mode !== 'waiting') {
@@ -196,12 +198,14 @@ export default async () => {
     await text(win, left, item.name, TYPE.body, nameWidth, restart ? 20 : ROW, TEXT.primary, FONT, 'left');
     if (restart) await text(win, left, 'Restart required', TYPE.caption, nameWidth, 18, TEXT.secondary, FONT, 'left');
     const right = await UI.createElement(win, { layout: { type: 'column', justifyContent: 'center' }, item: { size: { x: VERSION_WIDTH, y: ROW } } });
-    await text(win, right, item.next, TYPE.detail, VERSION_WIDTH, 20, majorChange(item.current, item.next) ? TEXT.accent : TEXT.primary, FONT, 'right');
-    await text(win, right, item.current, TYPE.caption, VERSION_WIDTH, 18, TEXT.disabled, FONT, 'right');
+    const nextVersion = await text(win, right, item.next, TYPE.detail, VERSION_WIDTH, 20, majorChange(item.current, item.next) ? TEXT.accent : TEXT.primary, FONT, 'right');
+    const currentVersion = await text(win, right, item.current, TYPE.caption, VERSION_WIDTH, 18, TEXT.disabled, FONT, 'right');
     await Promise.all([UI.attach(win, line, left), UI.attach(win, line, right)]);
     await UI.attach(win, parent, line);
     let state;
     return {
+      update: item => Promise.all([UI.setTextString(win, nextVersion, item.next), UI.setTextString(win, currentVersion, item.current),
+        UI.setTextColour(win, nextVersion, majorChange(item.current, item.next) ? TEXT.accent : TEXT.primary)]),
       mark: async next => {
         if (!marked || next === state) return;
         const was = state; state = next;

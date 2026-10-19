@@ -31,7 +31,7 @@ function readable(value, backgrounds, preferred, minimum = 4.5) {
   return preferred;
 }
 
-const defaultPalette = { background: '#111f1b', foreground: '#f4e9d8', accent: '#d96a1d' };
+const defaultPalette = { background: '#0b0f12', foreground: '#e8ecef', accent: '#d96a1d' };
 const paletteKeys = ['background', 'foreground', 'accent', 'good', 'warn', 'off'];
 
 // Overrides may contain literal colours or references such as {ref:'surface.card'}.

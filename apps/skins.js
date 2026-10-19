@@ -2,14 +2,11 @@ import { createTheme } from './theme-model.js';
 
 export const SKINS = [
   { id: 'koya', name: 'Koya', config: {
-    name: 'Koya', palette: { background: [0.065, 0.13, 0.105, 1], foreground: '#f4e9d8', accent: '#d96a1d' },
+    name: 'Koya', palette: { background: '#0b0f12', foreground: '#e8ecef', accent: '#d96a1d', warn: '#f2a33a' },
     overrides: {
-      text: { secondary: [0.66, 0.72, 0.66, 1], disabled: [0.48, 0.49, 0.44, 1] },
-      surface: { card: [0.095, 0.18, 0.14, 1], control: [0.16, 0.25, 0.2, 1], selected: { ref: 'surface.control' },
-        controlHover: [0.2, 0.3, 0.25, 1] },
-      // Preserve the original badge treatment for the default skin.
-      badge: { warnRing: { ref: 'badge.goodRing' }, warnDisc: { ref: 'badge.goodDisc' } },
-      health: { warningIndicator: { ref: 'surface.accent' } }
+      surface: { overlay: '#12181df5', card: '#1e272e', control: '#2a343d', selected: '#14343a' },
+      text: { secondary: '#a7b0b7', disabled: '#6f7a83' },
+      border: { surface: '#1e272e' }
     }
   } },
   { id: 'koya-light', name: 'Koya light', config: {

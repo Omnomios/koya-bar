@@ -36,26 +36,31 @@ struct DesktopModule: NativeModule {
     static std::string preferences_path() {
         return std::string(g_get_user_config_dir()) + "/koya-bar/settings.json";
     }
-    static JSValue load_preferences(NativeModule *base, int, JSValueConst *) {
+    static JSValue load_json(NativeModule *base, const std::string &path) {
         gchar *contents = nullptr; gsize size = 0;
-        if (!g_file_get_contents(preferences_path().c_str(), &contents, &size, nullptr)) return JS_NewObject(base->js);
+        if (!g_file_get_contents(path.c_str(), &contents, &size, nullptr)) return JS_NewObject(base->js);
         JSValue value = JS_ParseJSON(base->js, contents, size, "<desktop-settings>"); g_free(contents);
         if (JS_IsException(value)) { JS_FreeValue(base->js, JS_GetException(base->js)); return JS_NewObject(base->js); }
         return value;
     }
-    static JSValue save_preferences(NativeModule *base, int argc, JSValueConst *argv) {
+    static JSValue load_preferences(NativeModule *base, int, JSValueConst *) { return load_json(base, preferences_path()); }
+    static std::string displays_path() { return std::string(g_get_user_config_dir()) + "/koya-bar/displays.json"; }
+    static JSValue load_displays(NativeModule *base, int, JSValueConst *) { return load_json(base, displays_path()); }
+    static JSValue save_json(NativeModule *base, int argc, JSValueConst *argv, const std::string &path) {
         if (argc != 1 || !JS_IsString(argv[0])) return JS_ThrowTypeError(base->js, "savePreferences expects JSON text");
         const std::string contents = string(base->js, argv[0]);
         const std::string directory = std::string(g_get_user_config_dir()) + "/koya-bar";
         if (g_mkdir_with_parents(directory.c_str(), 0700) != 0) return JS_ThrowInternalError(base->js, "Cannot create settings directory");
         GError *error = nullptr;
         // GLib writes through a temporary file and renames it over the target.
-        if (!g_file_set_contents(preferences_path().c_str(), contents.c_str(), contents.size(), &error)) {
+        if (!g_file_set_contents(path.c_str(), contents.c_str(), contents.size(), &error)) {
             JSValue value = JS_ThrowInternalError(base->js, "%s", error ? error->message : "Cannot save settings");
             g_clear_error(&error); return value;
         }
         return JS_UNDEFINED;
     }
+    static JSValue save_preferences(NativeModule *base, int argc, JSValueConst *argv) { return save_json(base, argc, argv, preferences_path()); }
+    static JSValue save_displays(NativeModule *base, int argc, JSValueConst *argv) { return save_json(base, argc, argv, displays_path()); }
     static std::string quote(const char *text) {
         std::string result = "\"";
         for (const unsigned char *p = reinterpret_cast<const unsigned char *>(text ? text : ""); *p; ++p) {
@@ -229,6 +234,7 @@ extern "C" HELIX_PLUGIN_EXPORT int helix_plugin_integrate(JSContext *ctx, const 
             if (!user || !user->pw_name) return JS_ThrowInternalError(base->js, "Cannot resolve the current account");
             return JS_NewString(base->js, user->pw_name);
         }}, {"loadPreferences", DesktopModule::load_preferences}, {"savePreferences", DesktopModule::save_preferences},
+        {"loadDisplays", DesktopModule::load_displays}, {"saveDisplays", DesktopModule::save_displays},
         {"start", DesktopModule::start}, {"applications", [](NativeModule *base, int, JSValueConst *) { return static_cast<DesktopModule *>(base)->enqueue("applications"); }},
         {"launch", [](NativeModule *base, int argc, JSValueConst *argv) { if (argc != 1 || !JS_IsString(argv[0])) return JS_ThrowTypeError(base->js, "launch expects a desktop entry ID"); return static_cast<DesktopModule *>(base)->enqueue("launch", NativeModule::string(base->js, argv[0])); }},
         {"wallpapers", [](NativeModule *base, int, JSValueConst *) { return static_cast<DesktopModule *>(base)->enqueue("wallpapers"); }},

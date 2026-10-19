@@ -6,7 +6,7 @@ export const shellStatePayload = state => Object.fromEntries(Object.entries(stat
   [key, typeof value === 'number' && (!Number.isInteger(value) || value < -2147483648 || value > 2147483647)
     ? { _t: 'd', _v: value } : value]));
 
-export function createShellService({ applications, stored, persist, openBuiltin, setPowerProfile, setChargeControl, updates, sessionActions, changed = () => {} }) {
+export function createShellService({ applications, stored, persist, openBuiltin, setPowerProfile, setChargeControl, updates, sessionActions, displays, changed = () => {} }) {
   let settings = readSettings(stored), saving = Promise.resolve();
   let state = { Active: true, ScreenState: 'unlocked', PowerMenuState: 'closed' };
   const snapshot = () => ({ ...state, ...settings });
@@ -21,6 +21,14 @@ export function createShellService({ applications, stored, persist, openBuiltin,
       case 'OpenSettings': await openBuiltin('settings'); return;
       case 'OpenWifi': await openBuiltin('wifi'); return;
       case 'OpenUpdates': await openBuiltin('updates'); return;
+      case 'OpenDisplays': await openBuiltin('displays'); return;
+      case 'GetDisplays': return JSON.stringify(await displays.read());
+      case 'ApplyDisplays': case 'ConfirmDisplays': case 'RevertDisplays': {
+        if (!state.Active || state.ScreenState !== 'unlocked') throw new Error('Display changes require an active unlocked session');
+        const value = method === 'ApplyDisplays' ? await displays.apply(JSON.parse(args[0]))
+          : method === 'ConfirmDisplays' ? await displays.confirm(args[0]) : await displays.revert(args[0] || undefined);
+        return JSON.stringify(value);
+      }
       case 'GetUpdates': return JSON.stringify(updates.snapshot());
       case 'GetSessionActions': return JSON.stringify(await sessionActions.list());
       case 'RunSessionAction':

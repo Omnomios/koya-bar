@@ -20,6 +20,7 @@ import { authentication } from './authentication.js';
 import { updatesService } from './updates-process.js';
 import { createSessionActions, logoutHyprland } from './session-actions.js';
 import { createSessionMenu } from './session-menu.js';
+import { createDisplays } from './displays-service.js';
 
 const NAME = 'org.koya.Shell1', PATH = '/org/koya/Shell1';
 const methods = {
@@ -27,6 +28,7 @@ const methods = {
   OpenSettings: ['', ''], OpenWifi: ['', ''], OpenUpdates: ['', ''], GetUpdates: ['', 's'],
   CheckUpdates: ['', 'a{sv}'], InstallUpdates: ['', 'a{sv}'],
   GetSessionActions: ['', 's'], RunSessionAction: ['s', ''],
+  OpenDisplays: ['', ''], GetDisplays: ['', 's'], ApplyDisplays: ['s', 's'], ConfirmDisplays: ['s', 's'], RevertDisplays: ['s', 's'],
   SetSetting: ['ss', 'a{sv}'], SetPowerProfile: ['s', 'a{sv}'], SetChargeControl: ['sb', 'a{sv}']
 };
 export async function startShell() {
@@ -54,17 +56,25 @@ export async function startShell() {
     const child = Process.spawn({ cmd: Process.getEnv('KOYA_BIN', 'koya'), args });
     children.add(child); running.set(component, child);
     child.stderr.on('data', data => Log.error(component + ': ' + data));
-    child.on('exit', () => { children.delete(child); if (running.get(component) === child) running.delete(component); });
+    child.on('exit', () => {
+      children.delete(child); if (running.get(component) === child) running.delete(component);
+      if (component === 'displays') displayControl.cancelPreview().catch(error => Log.error('Displays: ' + error));
+    });
   };
   const profiles = createPowerProfiles(System, values => service.update(values));
   const battery = createBatteryStatus(System, values => service.update(values));
   const updates = updatesService({ settings: stored, changed: values => service.update(values) });
   const sessionActions = createSessionActions({ bus: System, lock: () => openBuiltin('lock'), logout: () => logoutHyprland(command => Hypr.send(command)) });
+  const displayControl = createDisplays({ query: () => Hypr.json('monitors', ['all']), send: command => Hypr.send(command),
+    load: () => Desktop.loadDisplays(), save: text => Desktop.saveDisplays(text),
+    allowed: () => { const state = service.snapshot(); return state.Active && state.ScreenState === 'unlocked'; },
+    changed: () => emit('DisplaysChanged'), report: error => Log.error('Displays: ' + error) });
   const service = createShellService({ applications, stored, setPowerProfile: profiles.setProfile,
-    setChargeControl: battery.setChargeControl, updates, sessionActions,
+    setChargeControl: battery.setChargeControl, updates, sessionActions, displays: displayControl,
     persist: text => Desktop.savePreferences(text), openBuiltin,
     changed: state => {
       updates.configure(state);
+      if (!state.Active || state.ScreenState !== 'unlocked') displayControl.cancelPreview().catch(error => Log.error('Displays: ' + error));
       Bus.emitSignal(PATH, NAME, 'StateChanged', 'a{sv}', shellStatePayload(state));
     } });
   const auth = authentication(values => service.update(values));
@@ -121,8 +131,11 @@ export async function startShell() {
   let sync = Promise.resolve();
   for (const name of ['monitoraddedv2', 'monitorremoved']) Hypr.on(name, () => {
     sync = sync.then(() => syncDisplays()).catch(error => Log.error('Displays: ' + error));
+    displayControl.topologyChanged().then(() => emit('DisplaysChanged')).catch(error => Log.error('Displays: ' + error));
   });
+  Hypr.on('configreloaded', () => displayControl.configReloaded().catch(error => Log.error('Displays: ' + error)));
   Hypr.connect();
+  setTimeout(() => displayControl.restore().catch(error => Log.error('Displays: ' + error)), 0);
   const sshAgent = startSshAgent(auth);
   setTimeout(() => auth.start(), 0);
   globalThis.koyaShell = { service, bars, sshAgent, updates, authentication: auth };

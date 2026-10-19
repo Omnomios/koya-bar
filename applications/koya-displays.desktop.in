@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Displays
+GenericName=Display Settings
+Comment=Arrange monitors and set resolution, scale and colour
+Exec="@SHELL_ROOT@/displays.sh"
+Icon=@SHELL_ROOT@/assets/launcher/koya-displays.svg
+Terminal=false
+Categories=Settings;HardwareSettings;
+Keywords=Koya;Monitor;Display;Screen;Resolution;Scale;HDR;
+StartupWMClass=org.koya.Displays

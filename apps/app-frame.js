@@ -22,13 +22,14 @@ import { CLEAR, ELEVATION, BAR_HEIGHT, GUTTER, SPACE, RADIUS, TYPE, HEADER_HEIGH
 export const glyph = name => '/rom/assets/launcher/' + name + '.png';
 const STATUS_HEIGHT = 24;
 
-export async function appFrame({ title: initialTitle, namespace, name = initialTitle, hint = () => '', onBack, onClose }) {
+export async function appFrame({ title: initialTitle, namespace, name = initialTitle, hint = () => '', onBack, onClose,
+  maxSize = { x: 560, y: 600 } }) {
   // Open on the focused monitor. (Querying Hyprland here stalls startup:
   // its replies are not delivered while the app's main promise is pending.)
   const displays = await Compositor.listDisplays({ backend: 'wayland' });
   const display = displays.find(item => item.focused) || displays[0];
   if (!display) throw new Error('No display available');
-  const panelFor = screen => ({ x: Math.min(560, screen.x - 40), y: Math.min(600, screen.y - BAR_HEIGHT - 60) });
+  const panelFor = screen => ({ x: Math.min(maxSize.x, screen.x - 40), y: Math.min(maxSize.y, screen.y - BAR_HEIGHT - 60) });
   const placeFor = (screen, panel) => ({ x: Math.round((screen.x - panel.x) / 2), y: Math.round((screen.y - panel.y) / 2) });
   let screen = { x: Number(display.logical_width || display.width), y: Number(display.logical_height || display.height) };
   const win = await Compositor.createWindow({ role: 'overlay', anchor: 'top-left', size: screen, exclusiveZone: -1,
@@ -280,10 +281,11 @@ export async function appFrame({ title: initialTitle, namespace, name = initialT
     await UI.setEnabled(win, backdrop, true);
     await Promise.all([Compositor.setPointerEvents(win, true), Compositor.setKeyboardInteractivity(win, 'exclusive')]);
   };
-  const close = () => {
+  const close = async () => {
     if (closing) return;
     closing = true;
-    onClose?.();
+    try { await onClose?.(); }
+    catch (error) { Log.error(name + ' close: ' + error); }
     Engine.quit();
   };
   Event.on('keyDown', event => {

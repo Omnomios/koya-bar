@@ -36,19 +36,24 @@ export default async () => {
   const home = async () => {
     const page = await frame.newPage();
     const clock = clockPreferences(state);
-    const [item, skinItem, clockItem, updatesItem] = await Promise.all([
+    const [item, skinItem, clockItem, updatesItem, displaysItem] = await Promise.all([
       frame.navigate(null, 'Wallpaper', wallpaperFor(state.Wallpaper).name, LIST_ROW_HEIGHT, () => go('wallpaper', 1)),
       frame.navigate(null, 'Theme', skinName(state.Skin), LIST_ROW_HEIGHT, () => go('skin', 1)),
       frame.navigate(null, 'Date & time', (clock.ClockTimeFormat === '24h' ? '24-hour' : '12-hour')
         + ' time · ' + (clock.ClockShowDate ? 'ISO date' : 'Date hidden'), LIST_ROW_HEIGHT, () => go('clock', 1)),
-      frame.navigate(null, 'OS updates', updatesSummary(state), LIST_ROW_HEIGHT, () => go('updates', 1))
+      frame.navigate(null, 'OS updates', updatesSummary(state), LIST_ROW_HEIGHT, () => go('updates', 1)),
+      frame.navigate(null, 'Displays', 'Arrangement, scaling and colour', LIST_ROW_HEIGHT, async () => {
+        try { await call('OpenDisplays'); frame.close(); }
+        catch (error) { frame.flash(String(error.message || error), TEXT.accent); }
+      })
     ]);
     await Promise.all([UI.attach(frame.win, page.el, item.target), UI.attach(frame.win, page.el, skinItem.target),
-      UI.attach(frame.win, page.el, clockItem.target), UI.attach(frame.win, page.el, updatesItem.target),
+      UI.attach(frame.win, page.el, clockItem.target), UI.attach(frame.win, page.el, updatesItem.target), UI.attach(frame.win, page.el, displaysItem.target),
       UI.setElementId(frame.win, item.target, 'settings-wallpaper'), UI.setElementId(frame.win, skinItem.target, 'settings-skin'),
-      UI.setElementId(frame.win, clockItem.target, 'settings-clock'), UI.setElementId(frame.win, updatesItem.target, 'settings-updates')]);
-    page.items.push(item.target, skinItem.target, clockItem.target, updatesItem.target);
-    page.height = SPACE.xs + LIST_ROW_HEIGHT * 4 + SPACE.s * 3;
+      UI.setElementId(frame.win, clockItem.target, 'settings-clock'), UI.setElementId(frame.win, updatesItem.target, 'settings-updates'),
+      UI.setElementId(frame.win, displaysItem.target, 'settings-displays')]);
+    page.items.push(item.target, skinItem.target, clockItem.target, updatesItem.target, displaysItem.target);
+    page.height = SPACE.xs + LIST_ROW_HEIGHT * 5 + SPACE.s * 4;
     page.update = () => Promise.all([UI.setTextString(frame.win, skinItem.valueLabel, skinName(state.Skin)),
       UI.setTextString(frame.win, updatesItem.valueLabel, updatesSummary(state))]);
     return page;
