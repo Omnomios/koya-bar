@@ -9,13 +9,15 @@ import { button, icon, label, toggle, children } from './touch-ui.js';
 import { clockPreferences, clockPresentation } from './clock-model.js';
 import { skinName } from './skins.js';
 import { themeEditor } from './theme-editor.js';
+import { UPDATE_INTERVALS, intervalLabel } from './updates-model.js';
 import { CLEAR, GUTTER, SPACE, TYPE, RADIUS, LIST_ROW_HEIGHT, TEXT, SURFACE, BORDER, configureTheme } from './theme.js';
 
 export default async () => {
   let state, author;
   const pending = new Set();
   const frame = await appFrame({ title: 'Settings', namespace: 'koya-settings',
-    hint: () => state ? '' : 'Connecting to the shell…', onBack: () => frame.current?.themeRoute ? author.back() : go('home', -1) });
+    hint: () => state ? '' : 'Connecting to the shell…', onBack: () => frame.current?.themeRoute ? author.back()
+      : go(frame.current?.intervalPage ? 'updates' : 'home', -1) });
   const save = async (key, value) => {
     if (!state || pending.has(key)) return;
     pending.add(key);
@@ -28,24 +30,27 @@ export default async () => {
     catch (error) { Log.error('Settings: ' + error); frame.flash('Could not save that change', TEXT.accent); return false; }
     finally { pending.delete(key); }
   };
+  // The state of updates, as a row's value.
+  const updatesSummary = value => value.UpdatesError ? 'Check failed' : value.UpdatesCount > 0
+    ? value.UpdatesCount + (value.UpdatesCount === 1 ? ' update' : ' updates') : value.UpdatesCheckedAt ? 'Up to date' : 'Not checked';
   const home = async () => {
     const page = await frame.newPage();
-    page.hint = 'Personalise your desktop';
     const clock = clockPreferences(state);
-    const [item, skinItem, clockItem, note] = await Promise.all([
+    const [item, skinItem, clockItem, updatesItem] = await Promise.all([
       frame.navigate(null, 'Wallpaper', wallpaperFor(state.Wallpaper).name, LIST_ROW_HEIGHT, () => go('wallpaper', 1)),
       frame.navigate(null, 'Theme', skinName(state.Skin), LIST_ROW_HEIGHT, () => go('skin', 1)),
       frame.navigate(null, 'Date & time', (clock.ClockTimeFormat === '24h' ? '24-hour' : '12-hour')
         + ' time · ' + (clock.ClockShowDate ? 'ISO date' : 'Date hidden'), LIST_ROW_HEIGHT, () => go('clock', 1)),
-      label(frame.win, null, 'Keyboard, locking and display controls are managed by your desktop session.', TYPE.caption, frame.width, 48, TEXT.secondary)
+      frame.navigate(null, 'OS updates', updatesSummary(state), LIST_ROW_HEIGHT, () => go('updates', 1))
     ]);
     await Promise.all([UI.attach(frame.win, page.el, item.target), UI.attach(frame.win, page.el, skinItem.target),
-      UI.attach(frame.win, page.el, clockItem.target), UI.attach(frame.win, page.el, note),
+      UI.attach(frame.win, page.el, clockItem.target), UI.attach(frame.win, page.el, updatesItem.target),
       UI.setElementId(frame.win, item.target, 'settings-wallpaper'), UI.setElementId(frame.win, skinItem.target, 'settings-skin'),
-      UI.setElementId(frame.win, clockItem.target, 'settings-clock')]);
-    page.items.push(item.target, skinItem.target, clockItem.target);
-    page.height = SPACE.xs + LIST_ROW_HEIGHT * 3 + 48 + SPACE.s * 3;
-    page.update = () => UI.setTextString(frame.win, skinItem.valueLabel, skinName(state.Skin));
+      UI.setElementId(frame.win, clockItem.target, 'settings-clock'), UI.setElementId(frame.win, updatesItem.target, 'settings-updates')]);
+    page.items.push(item.target, skinItem.target, clockItem.target, updatesItem.target);
+    page.height = SPACE.xs + LIST_ROW_HEIGHT * 4 + SPACE.s * 3;
+    page.update = () => Promise.all([UI.setTextString(frame.win, skinItem.valueLabel, skinName(state.Skin)),
+      UI.setTextString(frame.win, updatesItem.valueLabel, updatesSummary(state))]);
     return page;
   };
   const skins = async () => {
@@ -54,7 +59,7 @@ export default async () => {
     return author.build();
   };
   const clock = async () => {
-    const page = await frame.newPage(); page.hint = 'Clock options apply to the top bar and lock screen';
+    const page = await frame.newPage();
     const controls = [
       { key: 'ClockTimeFormat', title: '24-hour time', on: value => value.ClockTimeFormat === '24h',
         next: value => value.ClockTimeFormat === '24h' ? '12h' : '24h',
@@ -85,11 +90,51 @@ export default async () => {
     };
     return page;
   };
+  const updates = async () => {
+    const page = await frame.newPage();
+    let aurToggle;
+    const changeAUR = () => save('UpdatesIncludeAUR', !state.UpdatesIncludeAUR);
+    const [open, interval, aur] = await Promise.all([
+      frame.navigate(null, 'Open OS updates', updatesSummary(state), LIST_ROW_HEIGHT, async () => {
+        try { await call('OpenUpdates'); frame.close(); }
+        catch (_) { frame.flash('Could not open OS updates', TEXT.accent); }
+      }),
+      frame.navigate(null, 'Check interval', intervalLabel(state.UpdatesCheckInterval), LIST_ROW_HEIGHT, () => go('updateInterval', 1)),
+      frame.navigate(null, 'Include AUR packages', 'yay', LIST_ROW_HEIGHT, changeAUR, {
+        trailing: 56, trailingBuild: async parent => { aurToggle = await toggle(frame.win, parent, state.UpdatesIncludeAUR, changeAUR); return aurToggle; }
+      })
+    ]);
+    await Promise.all([open.target, interval.target, aur.target].map(id => UI.attach(frame.win, page.el, id)));
+    await Promise.all([UI.setElementId(frame.win, interval.target, 'settings-updates-interval'), UI.setElementId(frame.win, aur.target, 'settings-updates-aur')]);
+    page.items.push(open.target, interval.target, aur.target);
+    page.height = SPACE.xs + 3 * LIST_ROW_HEIGHT + 2 * SPACE.s;
+    page.update = () => Promise.all([UI.setTextString(frame.win, open.valueLabel, updatesSummary(state)),
+      UI.setTextString(frame.win, interval.valueLabel, intervalLabel(state.UpdatesCheckInterval)), aurToggle.set(state.UpdatesIncludeAUR)]);
+    return page;
+  };
+  const updateInterval = async () => {
+    const page = await frame.newPage(); page.intervalPage = true;
+    const height = Math.min(frame.stageHeight - SPACE.xs - GUTTER, UPDATE_INTERVALS.length * (48 + SPACE.xs));
+    const area = await frame.kit.scrollArea({ width: frame.width, height, gap: SPACE.xs, id: 'settings-update-intervals' });
+    await UI.attach(frame.win, page.el, area.id);
+    // One line each; the chosen interval carries an accent dot.
+    const marks = [];
+    const mark = minutes => minutes === state.UpdatesCheckInterval ? SURFACE.accent : CLEAR;
+    const rows = await Promise.all(UPDATE_INTERVALS.map((minutes, index) => frame.navigate(null, intervalLabel(minutes), '', 48, async () => {
+        if (await save('UpdatesCheckInterval', minutes)) await go('updates', -1);
+      }, { trailing: 24, trailingBuild: async () => (marks[index] = await UI.createElement(frame.win, { renderable: { type: 'circle',
+        aabb: { min: { x: 0, y: 0 }, max: { x: 10, y: 10 } }, resolution: 24, colour: mark(minutes) }, item: { size: { x: 24, y: 48 } }, contentAlign: { x: 'center', y: 'center' } })) })));
+    await Promise.all(rows.flatMap(item => [UI.attach(frame.win, area.content, item.target), UI.setEnabled(frame.win, item.valueLabel, false)]));
+    await area.setContentHeight(rows.length * (48 + SPACE.xs) - SPACE.xs);
+    page.height = SPACE.xs + height + GUTTER;
+    page.update = () => Promise.all(marks.map((id, index) => UI.setCircleColour(frame.win, id, mark(UPDATE_INTERVALS[index]))));
+    return page;
+  };
   // A grid of previews in the display's own aspect ratio. The selection is
   // an accent ring; imported images can be removed; the last tile adds one.
   let busy = false, reveal;
   const wallpapers = async () => {
-    const page = await frame.newPage(SPACE.m); page.hint = 'Choose a wallpaper, or add your own image';
+    const page = await frame.newPage(SPACE.m);
     const columns = 3, gap = SPACE.m, WALLPAPER_LABEL_HEIGHT = 20;
     const width = Math.floor((frame.width - gap * (columns - 1)) / columns);
     const screen = { x: Number(frame.display.logical_width || frame.display.width), y: Number(frame.display.logical_height || frame.display.height) };
@@ -198,8 +243,8 @@ export default async () => {
     finally { busy = false; }
   };
   const go = (next, direction, animate = true) => {
-    return frame.go(({ home, wallpaper: wallpapers, skin: skins, clock })[next],
-      { title: ({ home: 'Settings', wallpaper: 'Wallpaper', skin: 'Theme', clock: 'Date & time' })[next],
+    return frame.go(({ home, wallpaper: wallpapers, skin: skins, clock, updates, updateInterval })[next],
+      { title: ({ home: 'Settings', wallpaper: 'Wallpaper', skin: 'Theme', clock: 'Date & time', updates: 'OS updates', updateInterval: 'Check interval' })[next],
         direction, back: next !== 'home', animate });
   };
   connect('settings', async value => {

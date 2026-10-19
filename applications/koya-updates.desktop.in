@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Koya OS Updates
+GenericName=Software Updates
+Comment=Check and install official repository and AUR updates
+Exec="@SHELL_ROOT@/updates.sh"
+Icon=@SHELL_ROOT@/assets/launcher/koya-update.svg
+Terminal=false
+Categories=Settings;System;
+Keywords=Koya;Updates;Upgrade;Packages;AUR;
+StartupWMClass=org.koya.Updates

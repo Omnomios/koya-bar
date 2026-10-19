@@ -25,6 +25,10 @@ if [[ ${1:-} != --inside ]]; then
 fi
 export DBUS_SYSTEM_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS
 export GIO_USE_VFS=local
+status=0
+timeout -k 2 10 "$KOYA_BIN" -n "$root/build/native/modules" -m "$root" -i tests/updates-native.js > "$XDG_RUNTIME_DIR/updates.log" 2>&1 || status=$?
+cat "$XDG_RUNTIME_DIR/updates.log"
+if (( status != 0 )) || ! rg -q KOYA_UPDATES_NATIVE_PASS "$XDG_RUNTIME_DIR/updates.log" || rg -q KOYA_UPDATES_NATIVE_FAIL "$XDG_RUNTIME_DIR/updates.log"; then exit 1; fi
 args=(-n "$root/build/native/modules" -m "$root" -i tests/power-contract.js)
 status=0
 timeout -k 2 20 "$KOYA_BIN" "${args[@]}" > "$XDG_RUNTIME_DIR/power.log" 2>&1 || status=$?

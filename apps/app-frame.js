@@ -88,7 +88,7 @@ export async function appFrame({ title: initialTitle, namespace, name = initialT
       item: { size: { x: 'auto', y: HEADER_HEIGHT + SPACE.s } } }),
     // A column lets the fluid status label fill the parent's cross axis.
     UI.createElement(win, { layout: { type: 'column', padding: { l: GUTTER, r: GUTTER, t: 0, b: 0 } }, item: { size: { x: 'auto', y: STATUS_HEIGHT } } }),
-    UI.createElement(win, { layout: { type: 'none' }, clipToBounds: true, item: { size: { x: 'auto', y: 0 }, flexGrow: 1 } }),
+    UI.createElement(win, { layout: { type: 'none' }, item: { size: { x: 'auto', y: 0 }, flexGrow: 1 } }),
     button(win, null, '', MIN_CONTROL_SIZE, HEADER_HEIGHT, () => backShown && onBack?.(), { colour: CLEAR, icon: glyph('previous'), iconSize: 18, radius: RADIUS.control }),
     // Unclipped: the title slides into the back button's slot on a root page.
     text(win, null, initialTitle, TYPE.title, 0, HEADER_HEIGHT, TEXT.primary, undefined, 'left'),
@@ -99,6 +99,9 @@ export async function appFrame({ title: initialTitle, namespace, name = initialT
   // Long content scrolls inside its page (see the kit's scrollArea).
   const panel = await kit.surface('panel', { layout: { type: 'none' } });
   const root = panel.content, wall = panel.id;
+  // The panel is the boundary: sliding pages stop at its edge, while a page's
+  // own motion (a badge's pulse, say) may reach over the header's empty space.
+  await UI.setClipToBounds(win, root, true);
   // Centre the visible panel on the output, with its shadow beneath.
   let shade;
   const placePanel = async () => {

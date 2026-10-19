@@ -6,7 +6,7 @@ export const shellStatePayload = state => Object.fromEntries(Object.entries(stat
   [key, typeof value === 'number' && (!Number.isInteger(value) || value < -2147483648 || value > 2147483647)
     ? { _t: 'd', _v: value } : value]));
 
-export function createShellService({ applications, stored, persist, openBuiltin, setPowerProfile, setChargeControl, changed = () => {} }) {
+export function createShellService({ applications, stored, persist, openBuiltin, setPowerProfile, setChargeControl, updates, changed = () => {} }) {
   let settings = readSettings(stored), saving = Promise.resolve();
   let state = { Active: true, ScreenState: 'unlocked', PowerMenuState: 'closed' };
   const snapshot = () => ({ ...state, ...settings });
@@ -20,6 +20,13 @@ export function createShellService({ applications, stored, persist, openBuiltin,
       case 'ResolveIcon': return applications.resolveIcon(args[0]);
       case 'OpenSettings': await openBuiltin('settings'); return;
       case 'OpenWifi': await openBuiltin('wifi'); return;
+      case 'OpenUpdates': await openBuiltin('updates'); return;
+      case 'GetUpdates': return JSON.stringify(updates.snapshot());
+      case 'CheckUpdates':
+        updates.check(); return snapshot();
+      case 'InstallUpdates':
+        if (!state.Active || state.ScreenState !== 'unlocked') throw new Error('Updates require an active unlocked session');
+        updates.install(); return snapshot();
       case 'SetPowerProfile':
         if (!state.Active || state.ScreenState !== 'unlocked' || !setPowerProfile) throw new Error('Power mode change is unavailable');
         await setPowerProfile(args[0]); return snapshot();
@@ -31,6 +38,7 @@ export function createShellService({ applications, stored, persist, openBuiltin,
         const [key, value] = args;
         const validated = settingValue(key, value);
         const operation = saving.then(async () => {
+          if (key === 'UpdatesIncludeAUR' && (state.UpdatesInstalling || state.UpdatesChecking)) throw new Error('Wait for the current update operation to finish');
           const next = { ...settings, [key]: validated };
           await persist(JSON.stringify(next)); settings = next; changed(snapshot()); return snapshot();
         });

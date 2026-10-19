@@ -17,11 +17,14 @@ import { configureWallpaper } from './wallpaper-surface.js';
 import { createNotifications } from './notifications.js';
 import { createVolume } from './volume.js';
 import { authentication } from './authentication.js';
+import { updatesService } from './updates-process.js';
 
 const NAME = 'org.koya.Shell1', PATH = '/org/koya/Shell1';
 const methods = {
   GetState: ['', 'a{sv}'], Ready: ['s', ''], GetApplications: ['', 'aa{sv}'], ResolveIcon: ['s', 's'],
-  OpenSettings: ['', ''], OpenWifi: ['', ''], SetSetting: ['ss', 'a{sv}'], SetPowerProfile: ['s', 'a{sv}'], SetChargeControl: ['sb', 'a{sv}']
+  OpenSettings: ['', ''], OpenWifi: ['', ''], OpenUpdates: ['', ''], GetUpdates: ['', 's'],
+  CheckUpdates: ['', 'a{sv}'], InstallUpdates: ['', 'a{sv}'],
+  SetSetting: ['ss', 'a{sv}'], SetPowerProfile: ['s', 'a{sv}'], SetChargeControl: ['sb', 'a{sv}']
 };
 export async function startShell() {
   await Bus.connect();
@@ -52,10 +55,14 @@ export async function startShell() {
   };
   const profiles = createPowerProfiles(System, values => service.update(values));
   const battery = createBatteryStatus(System, values => service.update(values));
+  const updates = updatesService({ settings: stored, changed: values => service.update(values) });
   const service = createShellService({ applications, stored, setPowerProfile: profiles.setProfile,
-    setChargeControl: battery.setChargeControl,
+    setChargeControl: battery.setChargeControl, updates,
     persist: text => Desktop.savePreferences(text), openBuiltin,
-    changed: state => Bus.emitSignal(PATH, NAME, 'StateChanged', 'a{sv}', shellStatePayload(state)) });
+    changed: state => {
+      updates.configure(state);
+      Bus.emitSignal(PATH, NAME, 'StateChanged', 'a{sv}', shellStatePayload(state));
+    } });
   const auth = authentication(values => service.update(values));
   service.update({ Active: false, ScreenState: 'unknown' });
   Bus.exportObject(PATH, NAME, invocation => {
@@ -77,6 +84,8 @@ export async function startShell() {
   // Status services can be slow or absent; first paint must not wait for them.
   Promise.all([network.start(), battery.start(), profiles.start()])
     .catch(error => Log.error('Desktop status: ' + error));
+  // Checks run once for the shell, independently of monitors and open windows.
+  setTimeout(() => updates.start(), 0);
   const bars = new Map();
   const sharedNotifications = createNotifications(displays[0]);
   const sharedVolume = createVolume(displays[0]);
@@ -111,5 +120,5 @@ export async function startShell() {
   Hypr.connect();
   const sshAgent = startSshAgent(auth);
   setTimeout(() => auth.start(), 0);
-  globalThis.koyaShell = { service, bars, sshAgent, authentication: auth };
+  globalThis.koyaShell = { service, bars, sshAgent, updates, authentication: auth };
 }

@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+if [[ ${1:-} == --version ]]; then
+  printf 'Koya Shell %s\n' "$(cat "$root/VERSION")"
+  exit 0
+fi
 entry=index.js
 if [[ ${1:-} == --app ]]; then
   component=${2:?Missing application name}
-  case $component in launcher|settings|wifi|lock|account) entry=apps/$component.js ;; *) printf 'Unknown application: %s\n' "$component" >&2; exit 2 ;; esac
+  case $component in launcher|settings|wifi|lock|account|updates) entry=apps/$component.js ;; *) printf 'Unknown application: %s\n' "$component" >&2; exit 2 ;; esac
   shift 2
 fi
 export KOYA_DESKTOP_ROOT=$root

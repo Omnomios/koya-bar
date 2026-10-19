@@ -2,6 +2,10 @@
 
 A desktop shell for Hyprland, built with [Koya](https://www.koya-ui.com/).
 
+The shell's release version lives in [`VERSION`](VERSION), independently of the
+Koya runtime version. Meson and release packaging should use this file. Run
+`./run.sh --version` to print it without launching the shell.
+
 <p align="center">
   <img src="docs/screenshots/desktop.jpg" alt="Koya Bar on Hyprland with the network popover open">
 </p>
@@ -64,9 +68,10 @@ you don't like how something looks or behaves, change it.
 
 | | |
 | --- | --- |
-| **Bar** | Workspaces, clock, network, battery and power modes, volume and notifications, with a bar and wallpaper on every monitor |
+| **Bar** | Workspaces, clock, OS update count, network, battery and power modes, volume and notifications, with a bar and wallpaper on every monitor |
 | **Application picker** | Search across desktop entries that ignores case and accents, driven entirely from the keyboard |
-| **Settings** | Theme editor with live preview, wallpapers and clock format |
+| **Settings** | Theme editor with live preview, wallpapers, clock format and update check interval |
+| **OS updates** | Official repository and AUR updates, package versions, administrator approval and installation output |
 | **Wi-Fi** | Join, forget and manage saved networks |
 | **Account** | Profile picture, display name, password and automatic login |
 | **Lock screen** | Compositor session lock on every output, authenticated through PAM |
@@ -100,10 +105,11 @@ Each app also runs on its own. Bind `launcher.sh` to a shortcut in place of
 ./settings.sh     # Theme, wallpaper and clock
 ./account.sh      # Profile, password and sign-in options
 ./wifi.sh         # Wireless networks
+./updates.sh      # OS updates (requires the running shell)
 ./lock.sh         # Lock the session
 ```
 
-To add Account, Koya Settings and Koya Wi-Fi to other launchers and desktop
+To add Account, Koya Settings, Koya Wi-Fi and OS Updates to other launchers and desktop
 menus, run `./install-desktop-entries.sh`. It writes to
 `${XDG_DATA_HOME:-~/.local/share}/applications`, or to the directory given as
 its first argument. Entries point at this checkout, so rerun it after moving the
@@ -134,6 +140,7 @@ Install only the services for the features you use:
 | Login greeter | greetd |
 | SSH prompts | OpenSSH and an existing ssh-agent |
 | Authorisation prompts | polkit; sudo for `sudo -A` |
+| OS updates (Arch Linux) | pacman, pacman-contrib (`checkupdates`), sudo; yay for AUR support |
 | Idle locking | hypridle |
 
 `run.sh` uses the installed Koya and builds this project's native modules into
@@ -152,6 +159,9 @@ plugins. Assets default to `../share/koya/assets` relative to the executable.
   the default output and external volume changes.
 - **Notifications:** banners and history with actions, dismissal and clear-all.
   History remains in memory until the shell exits.
+- **OS updates:** update icon and package count; click to open the updates window.
+  `0` means up to date, `…` means checking or installing, `—` means not yet
+  checked, and `!` means a check failed or a required tool is missing.
 
 Controls for unavailable hardware or services are omitted. System changes use
 the corresponding service's existing authorisation policy.
@@ -176,6 +186,48 @@ Preferences are saved atomically to
 `${XDG_CONFIG_HOME:-~/.config}/koya-bar/settings.json`. Settings and Account
 release their input and hide while a file chooser or an authorisation prompt
 is open.
+
+## OS updates
+
+Open the updates window from the bar, `./updates.sh`, the desktop entry, or
+**Settings → OS updates**. It lists available packages with their installed
+and new versions, labels repository and AUR packages, and offers **Check now**.
+The running shell owns the checks and installations, sharing results across
+all monitors and windows. Failed checks keep the last known results and show
+the failure rather than reporting that the system is up to date.
+
+On Arch Linux, install `pacman-contrib` for repository checks and `yay` for AUR
+support. Repository checks use
+[`checkupdates`](https://man.archlinux.org/man/checkupdates.8.en), which refreshes
+a separate database without changing the system's package database or asking
+for administrator access. AUR checks use `yay -Qua`. Missing tools and network
+failures appear in the updates window.
+
+**Settings → OS updates → Check interval** offers manual checks only, every
+15 or 30 minutes, hourly, every 3, 6 or 12 hours, and daily. The default is
+hourly, including a check when the shell starts. Changes apply immediately.
+Automatic checks never install packages. **Include AUR packages** is enabled
+by default and can be disabled for repository-only upgrades. Custom intervals
+are accepted in the saved `UpdatesCheckInterval` preference: `0` disables
+automatic checks; integer values from `15` to `10080` specify minutes.
+
+**Update** requests administrator approval
+through the shell's existing sudo askpass dialog, then runs a full
+`yay -Syu` upgrade (or `sudo -A pacman -Syu` with AUR disabled). AUR builds run
+as the current user. The GUI uses `--noconfirm`: package-manager questions use
+their default answers and build-file review is skipped. Use your usual terminal
+workflow when an upgrade needs interactive review or choices.
+
+The window lists waiting packages by source (Arch Linux, AUR) with the new
+version over the old; a new leading version number is shown in the accent
+colour, and kernel, firmware, microcode, systemd, glibc and NVIDIA packages are
+marked *Restart required*. While installing, the same list shows each
+package's progress (read from pacman's and yay's output) with the current step
+and package. **Output** shows the package manager's own output. Closing the window leaves the
+upgrade running in the shell; reopen it to follow progress. The GUI does not
+terminate or time out an installation. A successful installation checks again
+to refresh the package list and bar count. Logs remain in memory for the shell's
+lifetime.
 
 ## Account
 
@@ -339,7 +391,7 @@ its lock state.
 UI code is in `apps/`, artwork in `assets/`, and native modules in
 `native/modules/`. Plugin SDK headers are bundled in `native/sdk/`.
 
-Run the focused login, locking, account and authentication checks with Node.js:
+Run the focused login, locking, account, authentication and update checks with Node.js:
 
 ```bash
 npm test
@@ -358,6 +410,15 @@ Native checks cover the SSH proxy, password changes, greetd handoff, automatic
 login, charge-control writes and privileged greeter file handling. They use
 disposable keys, an isolated agent, a private D-Bus and temporary settings and
 sockets.
+
+To preview the updates GUI with fake packages and preferences, run it on a
+private D-Bus. No package-manager commands run. The preview exercises the
+updates pages, Settings and bar states, saves Vulkan captures under
+`/tmp/koya-updates-preview/`, then exits:
+
+```bash
+dbus-run-session -- koya -m /usr/share/koya/assets -m . -n build/native/modules -i tests/updates-preview.js
+```
 
 `raw-unlock-demo.sh` is a password-screen demo for an active, available VT. It
 does not unlock LUKS or change boot configuration. Its demo password is `koya`.
