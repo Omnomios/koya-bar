@@ -7,6 +7,10 @@ shared_library('hx-login', 'login.cpp', name_prefix: 'lib',
   override_options: ['b_lundef=false'], include_directories: include_directories('../sdk'),
   dependencies: [gio], cpp_args: ['-fvisibility=hidden'])
 
+shared_library('hx-sleep', 'sleep.cpp', name_prefix: 'lib',
+  override_options: ['b_lundef=false'], include_directories: include_directories('../sdk'),
+  dependencies: [gio, dependency('threads')], cpp_args: ['-fvisibility=hidden'])
+
 ssh_agent = executable('koya-ssh-agent', 'ssh-agent.cpp', dependencies: [gio, dependency('threads')])
 executable('koya-askpass', '../askpass.cpp', dependencies: [gio])
 shared_library('hx-polkit-agent', 'polkit-agent.cpp', name_prefix: 'lib',
