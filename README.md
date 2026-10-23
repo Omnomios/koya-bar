@@ -72,7 +72,7 @@ you don't like how something looks or behaves, change it.
 
 | | |
 | --- | --- |
-| **Bar** | Workspaces, clock, OS update count, Caffeine sleep inhibition, network, battery and power modes, volume and notifications, with a bar and wallpaper on every monitor |
+| **Bar** | Workspaces, clock, OS update count, network, battery and power modes, volume and notifications, with a bar and wallpaper on every monitor |
 | **Application picker** | Search across desktop entries that ignores case and accents, driven entirely from the keyboard |
 | **Settings** | Theme editor with live preview, wallpapers, clock format and update check interval |
 | **Displays** | Drag monitors into position; set resolution, refresh rate, scale, rotation, mirroring, VRR, colour and HDR |
@@ -175,13 +175,6 @@ plugins. Assets default to `../share/koya/assets` relative to the executable.
 - **OS updates:** update icon and package count; click to open the updates window.
   `0` means up to date, `…` means checking or installing, `—` means not yet
   checked, and `!` means a check failed or a required tool is missing.
-- **Caffeine:** click to keep the computer awake; **Caffeine on** shows an active
-  inhibitor shared by all monitors. Click again to release it. **Starting…**
-  can be clicked to cancel an activation; **Retry Caffeine** indicates a failure.
-  The toggle starts off and resets when the session becomes inactive or the
-  shell exits. It uses [logind's freedesktop inhibitor API](https://www.freedesktop.org/software/systemd/man/latest/org.freedesktop.login1.html),
-  taking a `sleep:idle` block lock and retaining its UNIX file descriptor until
-  released. Screen blanking and automatic locking remain configured by hypridle.
 
 Controls for unavailable hardware or services are omitted. System changes use
 the corresponding service's existing authorisation policy.
@@ -466,28 +459,9 @@ meson test -C build
 ```
 
 Native checks cover the SSH proxy, password changes, greetd handoff, automatic
-login, charge-control writes, Caffeine inhibitor lifetimes and privileged
-greeter file handling. They use
+login, charge-control writes and privileged greeter file handling. They use
 disposable keys, an isolated agent, a private D-Bus and temporary settings and
 sockets.
-
-To run just the Caffeine checks after building the desktop and sleep modules:
-
-```bash
-KOYA_PLUGIN_DIR=/path/to/matching/plugins bash tests/caffeine.sh
-```
-
-These checks run in Koya with a private DBus daemon and a logind fixture that
-passes real UNIX descriptors. They verify acquisition, release, permission
-denial, cancellation, session inactivity and release when the runtime shuts down.
-The fixture requires Python 3 with PyGObject (`gi`, Gio and GLib); it never calls
-the host's logind service.
-
-`bash tests/greeter-modules.sh` loads the actual greeter and standard input
-controls in Koya using only the greeter's native dependencies. It needs no DRM
-device and makes no authentication requests. `install-greeter.sh` runs this
-check before replacing installed files. Caffeine lives in `Module/sleep`, which
-is built for the desktop shell and is not loaded or installed by the greeter.
 
 To preview the updates GUI with fake packages and preferences, run it on a
 private D-Bus. No package-manager commands run. The preview exercises the

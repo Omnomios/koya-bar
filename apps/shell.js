@@ -1,6 +1,5 @@
 import * as Compositor from 'Koya/Compositor';
 import * as Desktop from 'Module/desktop';
-import * as Sleep from 'Module/sleep';
 import * as Process from 'Module/process';
 import { session as Bus, system as System } from 'Module/dbus';
 import * as Log from 'Helix/Log';
@@ -22,7 +21,6 @@ import { updatesService } from './updates-process.js';
 import { createSessionActions, logoutHyprland } from './session-actions.js';
 import { createSessionMenu } from './session-menu.js';
 import { createDisplays } from './displays-service.js';
-import { createCaffeine } from './caffeine.js';
 
 const NAME = 'org.koya.Shell1', PATH = '/org/koya/Shell1';
 const methods = {
@@ -31,7 +29,7 @@ const methods = {
   CheckUpdates: ['', 'a{sv}'], InstallUpdates: ['', 'a{sv}'],
   GetSessionActions: ['', 's'], RunSessionAction: ['s', ''],
   OpenDisplays: ['', ''], GetDisplays: ['', 's'], ApplyDisplays: ['s', 's'], ConfirmDisplays: ['s', 's'], RevertDisplays: ['s', 's'],
-  SetSetting: ['ss', 'a{sv}'], SetPowerProfile: ['s', 'a{sv}'], SetChargeControl: ['sb', 'a{sv}'], SetCaffeine: ['b', 'a{sv}']
+  SetSetting: ['ss', 'a{sv}'], SetPowerProfile: ['s', 'a{sv}'], SetChargeControl: ['sb', 'a{sv}']
 };
 export async function startShell() {
   await Bus.connect();
@@ -65,8 +63,6 @@ export async function startShell() {
   };
   const profiles = createPowerProfiles(System, values => service.update(values));
   const battery = createBatteryStatus(System, values => service.update(values));
-  const caffeine = createCaffeine({ bus: System, acquire: () => Sleep.acquire(),
-    release: () => Sleep.release(), changed: values => service.update(values) });
   const updates = updatesService({ settings: stored, changed: values => service.update(values) });
   const sessionActions = createSessionActions({ bus: System, lock: () => openBuiltin('lock'), logout: () => logoutHyprland(command => Hypr.send(command)) });
   const displayControl = createDisplays({ query: () => Hypr.json('monitors', ['all']), send: command => Hypr.send(command),
@@ -74,13 +70,12 @@ export async function startShell() {
     allowed: () => { const state = service.snapshot(); return state.Active && state.ScreenState === 'unlocked'; },
     changed: () => emit('DisplaysChanged'), report: error => Log.error('Displays: ' + error) });
   const service = createShellService({ applications, stored, setPowerProfile: profiles.setProfile,
-    setChargeControl: battery.setChargeControl, setCaffeine: caffeine.setEnabled, updates, sessionActions, displays: displayControl,
+    setChargeControl: battery.setChargeControl, updates, sessionActions, displays: displayControl,
     persist: text => Desktop.savePreferences(text), openBuiltin,
     changed: state => {
       updates.configure(state);
       if (!state.Active || state.ScreenState !== 'unlocked') displayControl.cancelPreview().catch(error => Log.error('Displays: ' + error));
       Bus.emitSignal(PATH, NAME, 'StateChanged', 'a{sv}', shellStatePayload(state));
-      caffeine.onState(state);
     } });
   const auth = authentication(values => service.update(values));
   service.update({ Active: false, ScreenState: 'unknown' });
@@ -101,7 +96,7 @@ export async function startShell() {
   });
   const network = createNetworkStatus(System, values => service.update(values));
   // Status services can be slow or absent; first paint must not wait for them.
-  Promise.all([network.start(), battery.start(), profiles.start(), caffeine.start()])
+  Promise.all([network.start(), battery.start(), profiles.start()])
     .catch(error => Log.error('Desktop status: ' + error));
   // Checks run once for the shell, independently of monitors and open windows.
   setTimeout(() => updates.start(), 0);
@@ -143,5 +138,5 @@ export async function startShell() {
   setTimeout(() => displayControl.restore().catch(error => Log.error('Displays: ' + error)), 0);
   const sshAgent = startSshAgent(auth);
   setTimeout(() => auth.start(), 0);
-  globalThis.koyaShell = { service, bars, sshAgent, updates, caffeine, authentication: auth };
+  globalThis.koyaShell = { service, bars, sshAgent, updates, authentication: auth };
 }

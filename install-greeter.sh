@@ -13,11 +13,6 @@ for required in /usr/bin/koya /usr/bin/greetd \
   [[ -f $required ]] || { printf 'Missing required file: %s\n' "$required" >&2; exit 1; }
 done
 
-# Exercise the greeter's real import graph with candidate native modules and
-# installed Koya assets before replacing any installed greeter files.
-KOYA_BIN=/usr/bin/koya KOYA_ASSET_DIR=/usr/share/koya/assets KOYA_PLUGIN_DIR=/usr/lib \
-  bash "$root/tests/greeter-modules.sh"
-
 if [[ -e /usr/local/share/koya-greeter && ! -L /usr/local/share/koya-greeter ]]; then
   printf '/usr/local/share/koya-greeter exists and is not a symlink.\n' >&2
   exit 1

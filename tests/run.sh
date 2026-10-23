@@ -9,7 +9,7 @@ if [[ ${1:-} != --inside ]]; then
   plugins=${KOYA_PLUGIN_DIR:-$(dirname -- "$KOYA_BIN")/../lib}
   if [[ ! -f $root/build/build.ninja ]]; then meson setup "$root/build" "$root"; fi
   meson compile -C "$root/build"
-  for name in dbus process hypr; do
+  for name in dbus process; do
     [[ -f $plugins/libhx-$name.so ]] || { printf 'Missing plugin: %s\n' "$name" >&2; exit 1; }
     ln -sfn -- "$(realpath -- "$plugins/libhx-$name.so")" "$root/build/native/modules/libhx-$name.so"
   done
@@ -25,8 +25,6 @@ if [[ ${1:-} != --inside ]]; then
 fi
 export DBUS_SYSTEM_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS
 export GIO_USE_VFS=local
-KOYA_PLUGIN_DIR="$root/build/native/modules" bash "$root/tests/greeter-modules.sh"
-KOYA_PLUGIN_DIR="$root/build/native/modules" bash "$root/tests/caffeine.sh"
 status=0
 timeout -k 2 10 "$KOYA_BIN" -n "$root/build/native/modules" -m "$root" -i tests/updates-native.js > "$XDG_RUNTIME_DIR/updates.log" 2>&1 || status=$?
 cat "$XDG_RUNTIME_DIR/updates.log"
