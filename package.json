@@ -1,6 +1,6 @@
 {
   "name": "koya-bar",
-  "description": "A Wayland desktop shell and login greeter built with Koya",
+  "description": "A desktop shell built on Koya, for Hyprland and Arch",
   "license": "CC-BY-4.0",
   "private": true,
   "type": "module",

@@ -1,10 +1,6 @@
 # Koya Bar
 
-A desktop shell for Hyprland, built with [Koya](https://www.koya-ui.com/).
-
-The shell's release version lives in [`VERSION`](VERSION), independently of the
-Koya runtime version. Meson and release packaging should use this file. Run
-`./run.sh --version` to print it without launching the shell.
+A desktop shell built on [Koya](https://www.koya-ui.com/), for Hyprland and Arch.
 
 <p align="center">
   <img src="docs/screenshots/desktop.jpg" alt="Koya Bar on Hyprland with the network popover open">
@@ -32,6 +28,13 @@ can do on a large screen with a keyboard and mouse.
 
 ## Why you might want it
 
+It's meant to be looked at. I like text interfaces and they have their place,
+but I also like the visual polish and consistency of macOS, and Linux rarely
+gets that. Koya Bar has the visual impact of a web stack without the cruft.
+Popovers drop in, meters light up segment by segment and busy states animate
+rather than printing "Loading…". There's no browser underneath; Koya draws it
+on the GPU, and the whole shell sits at around 48 MB of memory.
+
 Most Linux desktops are assembled from parts. The bar comes from one project,
 the launcher from another and the lock screen from a third, and each has its
 own idea of what a button should look like. Getting them to agree takes a pile
@@ -40,22 +43,16 @@ of config files and a fair amount of compromise.
 Koya Bar is one shell, from the login screen to the lock screen. Change the
 theme once and everything follows it, including the greeter.
 
-It's also meant to be looked at. I like text interfaces and they have their
-place, but I also like the visual polish and consistency of macOS, and Linux
-rarely gets that. Popovers drop in, meters light up segment by segment and busy
-states animate rather than printing "Loading…". That doesn't cost what it
-would in Electron; the whole shell sits at around 48 MB of memory.
-
 That consistency carries through to passwords. Signing in, unlocking the
 screen, unlocking an SSH key and approving `sudo` or a system change all happen
 in the same dialog, rather than a terminal prompt or a window from some other
 toolkit. It names what's asking, and a wrong password shakes it rather than
 closing it.
 
-And it's meant to be pulled apart. The UI is about 7,000 lines of plain
-JavaScript in [`apps/`](apps/), with no build step. Native code only appears
-where the system demands it; PAM, greetd, polkit and the SSH agent proxy. If
-you don't like how something looks or behaves, change it.
+It's also easy to change. The UI is about 7,000 lines of plain JavaScript in
+[`apps/`](apps/), with no build step. Native code only appears where the
+system demands it; PAM, greetd, polkit and the SSH agent proxy. If you don't
+like how something looks or behaves, change it.
 
 <p align="center">
   <a href="docs/screenshots/launcher.jpg"><img src="docs/screenshots/launcher.jpg" width="400" alt="Application picker"></a>
@@ -442,6 +439,10 @@ its lock state.
 
 UI code is in `apps/`, artwork in `assets/`, and native modules in
 `native/modules/`. Plugin SDK headers are bundled in `native/sdk/`.
+
+The shell's release version lives in [`VERSION`](VERSION), independently of the
+Koya runtime version. Meson and release packaging should use this file. Run
+`./run.sh --version` to print it without launching the shell.
 
 Run the focused login, locking, account, authentication and update checks with Node.js:
 
