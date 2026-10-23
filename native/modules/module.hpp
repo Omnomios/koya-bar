@@ -94,7 +94,12 @@ struct NativeModule {
         return result;
     }
     bool integrate(const char *name, const HelixPluginHost *host, HelixPluginInstance **out) {
-        if (!out || !host || host->abiVersion != HELIX_PLUGIN_ABI_VERSION) return false;
+        if (!out || !host) return false;
+        if (host->abiVersion != HELIX_PLUGIN_ABI_VERSION) {
+            JS_ThrowInternalError(js, "%s: Helix plugin ABI mismatch (plugin %u, runtime %u). Rebuild native modules with the SDK matching this Koya runtime.",
+                name, HELIX_PLUGIN_ABI_VERSION, host->abiVersion);
+            return false;
+        }
         instance.abiVersion = HELIX_PLUGIN_ABI_VERSION; instance.state = this;
         instance.scriptUpdate = [](void *opaque, const HelixPluginUpdate *) { static_cast<NativeModule *>(opaque)->update(); };
         instance.scriptShutdown = [](void *opaque) { static_cast<NativeModule *>(opaque)->stop(); };

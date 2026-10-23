@@ -69,7 +69,7 @@ like how something looks or behaves, change it.
 
 | | |
 | --- | --- |
-| **Bar** | Workspaces, clock, OS update count, network, battery and power modes, volume and notifications, with a bar and wallpaper on every monitor |
+| **Bar** | Workspaces, clock, OS update count, Caffeine sleep inhibition, network, battery and power modes, volume and notifications, with a bar and wallpaper on every monitor |
 | **Application picker** | Search across desktop entries that ignores case and accents, driven entirely from the keyboard |
 | **Settings** | Theme editor with live preview, wallpapers, clock format and update check interval |
 | **Displays** | Drag monitors into position; set resolution, refresh rate, scale, rotation, mirroring, VRR, colour and HDR |
@@ -145,11 +145,17 @@ Install only the services for the features you use:
 | Authorisation prompts | polkit; sudo for `sudo -A` |
 | OS updates (Arch Linux) | pacman, pacman-contrib (`checkupdates`), sudo; yay, base-devel and git for AUR support |
 | Idle locking | hypridle |
+| Caffeine | systemd-logind (`org.freedesktop.login1`) |
 
 `run.sh` uses the installed Koya and builds this project's native modules into
 `build/`. For a nonstandard installation, set `KOYA_BIN`, `KOYA_ASSET_DIR` and
 `KOYA_PLUGIN_DIR` to the executable, its matching shared assets and its
 plugins. Assets default to `../share/koya/assets` relative to the executable.
+
+Native modules must match Koya's **Helix plugin ABI**, independently of its
+product version. This checkout includes the ABI 2 SDK. Rebuild the native modules
+after an SDK update and use a runtime and external plugins built for the same
+ABI. An ABI mismatch now reports the plugin and runtime ABI numbers explicitly.
 
 ## Bar controls
 
@@ -172,6 +178,13 @@ plugins. Assets default to `../share/koya/assets` relative to the executable.
 - **OS updates:** update icon and package count; click to open the updates window.
   `0` means up to date, `…` means checking or installing, `—` means not yet
   checked, and `!` means a check failed or a required tool is missing.
+- **Caffeine:** click to inhibit sleep and logind's idle actions; **Caffeine on**
+  confirms that the lock is held. Click again to release it. **Starting…** can
+  be clicked to cancel activation, and **Retry Caffeine** indicates an error.
+  State is shared between monitors and resets when the session becomes inactive
+  or the shell exits. The backend uses [logind's freedesktop `Inhibit` API](https://www.freedesktop.org/software/systemd/man/latest/org.freedesktop.login1.html)
+  with a `sleep:idle` block lock, retaining the returned UNIX descriptor until
+  released. Screen blanking and automatic locking remain configured by hypridle.
 
 Controls for unavailable hardware or services are omitted. System changes use
 the corresponding service's existing authorisation policy.
@@ -460,9 +473,22 @@ meson test -C build
 ```
 
 Native checks cover the SSH proxy, password changes, greetd handoff, automatic
-login, charge-control writes and privileged greeter file handling. They use
+login, charge-control writes, Caffeine inhibitor lifetimes and privileged greeter
+file handling. They use
 disposable keys, an isolated agent, a private D-Bus and temporary settings and
 sockets.
+
+Run the Caffeine checks alone after building the native modules:
+
+```bash
+KOYA_PLUGIN_DIR=/path/to/matching/plugins bash tests/caffeine.sh
+```
+
+The tests run in Koya against a private logind fixture passing real UNIX file
+descriptors. They cover activation, release, permission denial, cancellation,
+rapid off/on changes, session inactivity and cleanup on runtime exit. The fixture
+requires Python 3 with PyGObject (Gio and GLib). `KOYA_TEST_MODULE_DIR` selects an
+isolated build directory when testing another matching runtime/SDK combination.
 
 To preview the updates GUI with fake packages and preferences, run it on a
 private D-Bus. No package-manager commands run. The preview exercises the
