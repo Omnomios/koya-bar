@@ -59,7 +59,8 @@ export default function () {
       const enabling = set(true).then(() => false, () => true);
       await waitFor(async () => Number(await control('Pending')) === 1, 'Enable did not reach logind');
       assert(service.snapshot().CaffeinePending && !service.snapshot().CaffeineActive, 'Pending acquisition reported active');
-      assert(caffeineButton(service.snapshot()).busy, 'Pending acquisition must show the spinner');
+      assert(caffeineButton(service.snapshot()).busy && caffeineButton(service.snapshot()).icon === 'caffeine',
+        'Pending acquisition must retain the inactive cup and indicate pending status');
       await set(false); await control('Hold', 'b', false);
       assert(await enabling, 'Cancelled acquisition reported success'); await count(0);
 

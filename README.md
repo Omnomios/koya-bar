@@ -180,8 +180,8 @@ ABI. An ABI mismatch now reports the plugin and runtime ABI numbers explicitly.
   checked, and `!` means a check failed or a required tool is missing.
 - **Caffeine:** click the coffee-cup icon to inhibit sleep and logind's idle
   actions. The cup turns orange while active; click again to release it. A
-  spinner shows pending activation (click to cancel), and a warning dot indicates
-  an error (click to retry).
+  small orange dot beside the cup shows pending activation (click to cancel).
+  A warning dot indicates an error (click to retry).
   State is shared between monitors and resets when the session becomes inactive
   or the shell exits. The backend uses [logind's freedesktop `Inhibit` API](https://www.freedesktop.org/software/systemd/man/latest/org.freedesktop.login1.html)
   with a `sleep:idle` block lock, retaining the returned UNIX descriptor until

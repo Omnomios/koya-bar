@@ -76,7 +76,7 @@ export default async ({ display, notifications: shared, volume: sharedVolume, se
   // Prepare every independent node together. Siblings are created in their
   // authored order and attached in that same order, even if replies reverse.
   const [root, strip, edge, row, centre, brandChip, brand, dateTime, clock, date, spacer,
-    updateChip, updateRow, updateGlyph, updateCount, updateSpinner, updateWarning, caffeineChip, caffeineGlyph, caffeineSpinner, caffeineWarning, speakerChip, speakerGlyph, networkChip, networkGlyph, warning,
+    updateChip, updateRow, updateGlyph, updateCount, updateSpinner, updateWarning, caffeineChip, caffeineGlyph, caffeinePending, caffeineWarning, speakerChip, speakerGlyph, networkChip, networkGlyph, warning,
     batteryChip, batteryRow, batteryIcon, level, charging, percentage, divider, bellChip, bell] = await Promise.all([
     UI.createElement(win, { layout: { type: 'none' }, item: { size: AUTO }, onHover: surfaceCursor(win) }),
     UI.createElement(win, { id: 'top-bar-strip', renderable: { type: 'box', colour: SURFACE.overlay, cornerRadius: RADIUS.surface, cornerResolution: 16 },
@@ -111,7 +111,9 @@ export default async ({ display, notifications: shared, volume: sharedVolume, se
       catch (error) { Log.error('Caffeine: ' + error); }
     }),
     icon(win, null, texture(initialCaffeine.icon), ICON_SIZE, 'auto', 'auto'),
-    throbber(win, null, 12, TEXT.primary, 12),
+    UI.createElement(win, { id: 'top-bar-caffeine-pending',
+      renderable: { type: 'circle', aabb: { min: { x: 0, y: 0 }, max: { x: 4, y: 4 } }, resolution: 16, colour: TEXT.accent },
+      item: { size: AUTO }, contentAlign: { x: 'center', y: 'center' } }),
     UI.createElement(win, { renderable: { type: 'circle', aabb: { min: { x: 0, y: 0 }, max: { x: 6, y: 6 } }, resolution: 16, colour: HEALTH.warningIndicator },
       item: { size: AUTO }, contentAlign: { x: 'center', y: 'center' } }),
     chip(STATUS_BUTTON_WIDTH, () => anchored(speakerChip.id, async (output, anchor) => {
@@ -147,10 +149,11 @@ export default async ({ display, notifications: shared, volume: sharedVolume, se
     UI.attach(win, brandChip.face, brand),
     UI.attach(win, updateRow, updateGlyph), UI.attach(win, updateRow, updateCount), UI.attach(win, updateRow, updateSpinner.id), UI.attach(win, updateChip.face, updateRow),
     UI.attach(win, updateChip.face, updateWarning), UI.setPosition(win, updateWarning, { x: ICON_SIZE / 2, y: -ICON_SIZE / 2 + 2 }), UI.setHitTarget(win, updateWarning, false),
-    ...[caffeineGlyph, caffeineSpinner.id, caffeineWarning].map(id => UI.attach(win, caffeineChip.face, id)),
+    ...[caffeineGlyph, caffeinePending, caffeineWarning].map(id => UI.attach(win, caffeineChip.face, id)),
     UI.setElementId(win, caffeineChip.id, 'top-bar-caffeine'), UI.setElementId(win, caffeineGlyph, 'top-bar-caffeine-icon'),
     UI.setHitTarget(win, caffeineChip.id, initialCaffeine.enabled), UI.setHitTarget(win, caffeineGlyph, false),
-    UI.setEnabled(win, caffeineGlyph, !initialCaffeine.busy), UI.setEnabled(win, caffeineSpinner.id, initialCaffeine.busy),
+    UI.setEnabled(win, caffeinePending, initialCaffeine.busy), UI.setHitTarget(win, caffeinePending, false),
+    UI.setPosition(win, caffeinePending, { x: ICON_SIZE / 2, y: -ICON_SIZE / 2 + 2 }),
     UI.setEnabled(win, caffeineWarning, initialCaffeine.error), UI.setHitTarget(win, caffeineWarning, false),
     UI.setPosition(win, caffeineWarning, { x: ICON_SIZE / 2, y: -ICON_SIZE / 2 + 2 }),
     UI.attach(win, dateTime, clock), UI.attach(win, dateTime, date),
@@ -172,7 +175,6 @@ export default async ({ display, notifications: shared, volume: sharedVolume, se
     UI.setEnabled(win, updateSpinner.id, initialIndicator.busy), UI.setEnabled(win, updateWarning, initialIndicator.warning)
   ]);
   if (initialIndicator.busy) updateSpinner.start();
-  if (initialCaffeine.busy) caffeineSpinner.start();
   await UI.attachRoot(win, root);
   // Workspace discovery populates the already-visible bar on a later turn.
   workspaces.build(centre);
@@ -219,8 +221,7 @@ export default async ({ display, notifications: shared, volume: sharedVolume, se
       previous = key;
       updates = updates.then(() => Promise.all([
         UI.setTexture(win, caffeineGlyph, texture(caffeine.icon)), UI.setHitTarget(win, caffeineChip.id, caffeine.enabled),
-        UI.setEnabled(win, caffeineGlyph, !caffeine.busy), UI.setEnabled(win, caffeineSpinner.id, caffeine.busy),
-        caffeine.busy ? caffeineSpinner.start() : caffeineSpinner.stop(), UI.setEnabled(win, caffeineWarning, caffeine.error),
+        UI.setEnabled(win, caffeinePending, caffeine.busy), UI.setEnabled(win, caffeineWarning, caffeine.error),
         UI.setEnabled(win, updateChip.id, indicator.visible), UI.setTextString(win, updateCount, indicator.text),
         UI.setEnabled(win, updateCount, !!indicator.text), UI.setLayoutSize(win, updateCount, { x: Math.max(8, indicator.text.length * 8) }),
         UI.setEnabled(win, updateSpinner.id, indicator.busy), indicator.busy ? updateSpinner.start() : updateSpinner.stop(),
