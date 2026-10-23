@@ -40,7 +40,7 @@ export default function () {
       const count = expected => waitFor(async () => Number(await control('Count')) === expected, 'Expected ' + expected + ' inhibitor FDs');
       assert(!service.snapshot().CaffeineActive, 'Caffeine must start off');
       await set(true); await count(1);
-      assert(service.snapshot().CaffeineActive && caffeineButton(service.snapshot()).label === 'Caffeine on', 'Acquisition was not reflected in the button');
+      assert(service.snapshot().CaffeineActive && caffeineButton(service.snapshot()).icon === 'caffeine-active', 'Acquisition was not reflected in the icon');
       const seen = JSON.parse(await control('Seen'));
       assert(JSON.stringify(seen[0]) === JSON.stringify(['sleep:idle', 'Koya Bar', 'Caffeine keeps the computer awake', 'block']), 'Wrong freedesktop inhibition arguments');
       await set(true); await count(1);
@@ -49,7 +49,7 @@ export default function () {
       assert(!service.snapshot().CaffeineActive, 'Off did not reset state');
       await control('Reject', 'b', true); await denied(() => set(true)); await count(0);
       assert(!service.snapshot().CaffeineActive && !service.snapshot().CaffeinePending && service.snapshot().CaffeineError, 'Denied inhibition reported success or stayed pending');
-      assert(caffeineButton(service.snapshot()).label === 'Retry Caffeine', 'Failure is not visible on the button');
+      assert(caffeineButton(service.snapshot()).error, 'Failure is not visible on the button');
       await control('Reject', 'b', false); await set(true); await set(false); await count(0);
       await denied(() => set('true'));
       service.update({ ScreenState: 'locked' }); await denied(() => set(true));
@@ -59,6 +59,7 @@ export default function () {
       const enabling = set(true).then(() => false, () => true);
       await waitFor(async () => Number(await control('Pending')) === 1, 'Enable did not reach logind');
       assert(service.snapshot().CaffeinePending && !service.snapshot().CaffeineActive, 'Pending acquisition reported active');
+      assert(caffeineButton(service.snapshot()).busy, 'Pending acquisition must show the spinner');
       await set(false); await control('Hold', 'b', false);
       assert(await enabling, 'Cancelled acquisition reported success'); await count(0);
 

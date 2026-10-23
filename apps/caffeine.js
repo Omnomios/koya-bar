@@ -1,8 +1,8 @@
 // The native backend owns logind's inhibitor FD. State is published only after
 // acquisition succeeds; switching off cancels a pending acquisition as well.
 export function caffeineButton(state = {}) {
-  return { label: state.CaffeinePending ? 'Starting…' : state.CaffeineError ? 'Retry Caffeine' : state.CaffeineActive ? 'Caffeine on' : 'Caffeine',
-    active: !!state.CaffeineActive, error: !!state.CaffeineError,
+  return { icon: state.CaffeineActive ? 'caffeine-active' : 'caffeine',
+    active: !!state.CaffeineActive, busy: !!state.CaffeinePending, error: !!state.CaffeineError,
     enabled: !!(state.CaffeineActive || state.CaffeinePending || state.Active && state.ScreenState === 'unlocked') };
 }
 

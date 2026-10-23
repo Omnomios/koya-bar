@@ -178,9 +178,10 @@ ABI. An ABI mismatch now reports the plugin and runtime ABI numbers explicitly.
 - **OS updates:** update icon and package count; click to open the updates window.
   `0` means up to date, `…` means checking or installing, `—` means not yet
   checked, and `!` means a check failed or a required tool is missing.
-- **Caffeine:** click to inhibit sleep and logind's idle actions; **Caffeine on**
-  confirms that the lock is held. Click again to release it. **Starting…** can
-  be clicked to cancel activation, and **Retry Caffeine** indicates an error.
+- **Caffeine:** click the coffee-cup icon to inhibit sleep and logind's idle
+  actions. The cup turns orange while active; click again to release it. A
+  spinner shows pending activation (click to cancel), and a warning dot indicates
+  an error (click to retry).
   State is shared between monitors and resets when the session becomes inactive
   or the shell exits. The backend uses [logind's freedesktop `Inhibit` API](https://www.freedesktop.org/software/systemd/man/latest/org.freedesktop.login1.html)
   with a `sleep:idle` block lock, retaining the returned UNIX descriptor until
