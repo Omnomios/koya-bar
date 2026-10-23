@@ -33,9 +33,14 @@ export function createCaffeine({ acquire, release, bus, changed = () => {} }) {
       if (active) return snapshot();
       if (pending) return flight;
       const request = ++generation;
+      const previous = flight;
       pending = true; error = ''; publish();
       flight = (async () => {
         try {
+          // A quick off/on must let the cancelled native request finish
+          // before starting the replacement on its dedicated worker.
+          if (previous) await previous.catch(() => {});
+          if (request !== generation) throw new Error('Caffeine request cancelled');
           await acquire();
           if (request !== generation) throw new Error('Caffeine request cancelled');
           active = true; pending = false; publish();

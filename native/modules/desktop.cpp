@@ -3,7 +3,6 @@
 #include "wallpapers.hpp"
 #include "avatars.hpp"
 #include "passwords.hpp"
-#include "sleep-inhibitor.hpp"
 #include <gio/gdesktopappinfo.h>
 #include <memory>
 #include <atomic>
@@ -17,7 +16,6 @@ struct DesktopModule: NativeModule {
     std::string root;
     std::unique_ptr<Icons> icons;
     Wallpapers wallpapers;
-    SleepInhibitor sleep_inhibitor;
     GAppInfoMonitor *monitor = nullptr;
     gulong handler = 0;
     guint notification = 0;
@@ -74,7 +72,6 @@ struct DesktopModule: NativeModule {
     }
     void clear() { for (auto &entry : apps) g_object_unref(entry.second); apps.clear(); }
     void shutdown() override {
-        sleep_inhibitor.release();
         if (monitor) { g_signal_handler_disconnect(monitor, handler); g_object_unref(monitor); monitor = nullptr; }
         remove(notification);
         { std::lock_guard<std::mutex> lock(mutex); ending = true; jobs.clear(); }
@@ -164,9 +161,6 @@ struct DesktopModule: NativeModule {
             Result result{job.id, {}, {}};
             if (icons && invalidated.exchange(false)) icons->invalidate();
             if (job.kind == "wallpapers") result.json = wallpapers.list();
-            else if (job.kind == "acquireSleepInhibitor") {
-                if (sleep_inhibitor.acquire(std::stoull(job.argument), result.error)) result.json = "true";
-            }
             else if (job.kind == "importWallpaper") { std::string error; result.json = wallpapers.import(job.argument, error); if (result.json.empty()) result.error = error; }
             else if (job.kind == "removeWallpaper") { if (wallpapers.remove(job.argument)) result.json = "true"; else result.error = "Cannot remove wallpaper"; }
             else if (job.kind == "prepareAvatar") {
@@ -221,7 +215,7 @@ struct DesktopModule: NativeModule {
     // Image jobs need no application state, so they start the worker on
     // demand in apps that never call start().
     JSValue enqueue(const char *kind, std::string argument = "") {
-        const bool standalone = g_str_has_suffix(kind, "allpaper") || !strcmp(kind, "wallpapers") || !strcmp(kind, "prepareAvatar") || !strcmp(kind, "changePassword") || !strcmp(kind, "acquireSleepInhibitor");
+        const bool standalone = g_str_has_suffix(kind, "allpaper") || !strcmp(kind, "wallpapers") || !strcmp(kind, "prepareAvatar") || !strcmp(kind, "changePassword");
         if (!icons && !standalone) return JS_ThrowInternalError(js, "Desktop module is not started");
         if (!worker.joinable()) { ending = false; worker = std::thread([this] { run(); }); }
         if (promises.size() >= 128) return JS_ThrowInternalError(js, "Too many pending desktop requests");
@@ -241,14 +235,6 @@ extern "C" HELIX_PLUGIN_EXPORT int helix_plugin_integrate(JSContext *ctx, const 
             return JS_NewString(base->js, user->pw_name);
         }}, {"loadPreferences", DesktopModule::load_preferences}, {"savePreferences", DesktopModule::save_preferences},
         {"loadDisplays", DesktopModule::load_displays}, {"saveDisplays", DesktopModule::save_displays},
-        {"acquireSleepInhibitor", [](NativeModule *base, int, JSValueConst *) {
-            auto *self = static_cast<DesktopModule *>(base);
-            return self->enqueue("acquireSleepInhibitor", std::to_string(self->sleep_inhibitor.begin()));
-        }},
-        {"releaseSleepInhibitor", [](NativeModule *base, int, JSValueConst *) {
-            static_cast<DesktopModule *>(base)->sleep_inhibitor.release();
-            return JS_UNDEFINED;
-        }},
         {"start", DesktopModule::start}, {"applications", [](NativeModule *base, int, JSValueConst *) { return static_cast<DesktopModule *>(base)->enqueue("applications"); }},
         {"launch", [](NativeModule *base, int argc, JSValueConst *argv) { if (argc != 1 || !JS_IsString(argv[0])) return JS_ThrowTypeError(base->js, "launch expects a desktop entry ID"); return static_cast<DesktopModule *>(base)->enqueue("launch", NativeModule::string(base->js, argv[0])); }},
         {"wallpapers", [](NativeModule *base, int, JSValueConst *) { return static_cast<DesktopModule *>(base)->enqueue("wallpapers"); }},

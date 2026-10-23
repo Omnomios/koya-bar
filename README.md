@@ -471,7 +471,7 @@ greeter file handling. They use
 disposable keys, an isolated agent, a private D-Bus and temporary settings and
 sockets.
 
-To run just the Caffeine checks after building the desktop module:
+To run just the Caffeine checks after building the desktop and sleep modules:
 
 ```bash
 KOYA_PLUGIN_DIR=/path/to/matching/plugins bash tests/caffeine.sh
@@ -482,6 +482,12 @@ passes real UNIX descriptors. They verify acquisition, release, permission
 denial, cancellation, session inactivity and release when the runtime shuts down.
 The fixture requires Python 3 with PyGObject (`gi`, Gio and GLib); it never calls
 the host's logind service.
+
+`bash tests/greeter-modules.sh` loads the actual greeter and standard input
+controls in Koya using only the greeter's native dependencies. It needs no DRM
+device and makes no authentication requests. `install-greeter.sh` runs this
+check before replacing installed files. Caffeine lives in `Module/sleep`, which
+is built for the desktop shell and is not loaded or installed by the greeter.
 
 To preview the updates GUI with fake packages and preferences, run it on a
 private D-Bus. No package-manager commands run. The preview exercises the

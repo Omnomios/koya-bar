@@ -1,4 +1,4 @@
-import * as Desktop from 'Module/desktop';
+import * as Sleep from 'Module/sleep';
 import { system as Bus } from 'Module/dbus';
 import * as Engine from 'Helix/Engine';
 import * as Log from 'Helix/Log';
@@ -33,8 +33,8 @@ export default function () {
       await waitFor(async () => Number(await control('Count')) === 0, 'Private logind did not start');
       const service = createShellService({ setCaffeine: value => caffeine.setEnabled(value),
         changed: state => caffeine?.onState(state) });
-      caffeine = createCaffeine({ bus: Bus, acquire: () => Desktop.acquireSleepInhibitor(),
-        release: () => Desktop.releaseSleepInhibitor(), changed: values => service.update(values) });
+      caffeine = createCaffeine({ bus: Bus, acquire: () => Sleep.acquire(),
+        release: () => Sleep.release(), changed: values => service.update(values) });
       await caffeine.start();
       const set = enabled => service.request('SetCaffeine', [enabled]);
       const count = expected => waitFor(async () => Number(await control('Count')) === expected, 'Expected ' + expected + ' inhibitor FDs');
@@ -61,6 +61,15 @@ export default function () {
       assert(service.snapshot().CaffeinePending && !service.snapshot().CaffeineActive, 'Pending acquisition reported active');
       await set(false); await control('Hold', 'b', false);
       assert(await enabling, 'Cancelled acquisition reported success'); await count(0);
+
+      await control('Hold', 'b', true);
+      const interrupted = set(true).then(() => false, () => true);
+      await waitFor(async () => Number(await control('Pending')) === 1, 'Replacement test did not reach logind');
+      await set(false);
+      const replacement = set(true);
+      await control('Hold', 'b', false);
+      assert(await interrupted, 'Old acquisition survived a replacement');
+      await replacement; await count(1); await set(false); await count(0);
 
       await set(true); service.update({ Active: false }); await count(0);
       assert(!service.snapshot().CaffeineActive, 'Inactive session kept an inhibitor');

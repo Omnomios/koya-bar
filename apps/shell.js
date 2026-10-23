@@ -1,5 +1,6 @@
 import * as Compositor from 'Koya/Compositor';
 import * as Desktop from 'Module/desktop';
+import * as Sleep from 'Module/sleep';
 import * as Process from 'Module/process';
 import { session as Bus, system as System } from 'Module/dbus';
 import * as Log from 'Helix/Log';
@@ -64,8 +65,8 @@ export async function startShell() {
   };
   const profiles = createPowerProfiles(System, values => service.update(values));
   const battery = createBatteryStatus(System, values => service.update(values));
-  const caffeine = createCaffeine({ bus: System, acquire: () => Desktop.acquireSleepInhibitor(),
-    release: () => Desktop.releaseSleepInhibitor(), changed: values => service.update(values) });
+  const caffeine = createCaffeine({ bus: System, acquire: () => Sleep.acquire(),
+    release: () => Sleep.release(), changed: values => service.update(values) });
   const updates = updatesService({ settings: stored, changed: values => service.update(values) });
   const sessionActions = createSessionActions({ bus: System, lock: () => openBuiltin('lock'), logout: () => logoutHyprland(command => Hypr.send(command)) });
   const displayControl = createDisplays({ query: () => Hypr.json('monitors', ['all']), send: command => Hypr.send(command),

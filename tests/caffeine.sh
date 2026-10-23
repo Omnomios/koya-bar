@@ -10,6 +10,7 @@ if [[ -z $plugins ]]; then
   done
 fi
 [[ -f $root/build/native/modules/libhx-desktop.so ]] || { printf 'Build the desktop native module first.\n' >&2; exit 1; }
+[[ -f $root/build/native/modules/libhx-sleep.so ]] || { printf 'Build the sleep native module first.\n' >&2; exit 1; }
 for name in dbus process hypr; do
   [[ -f $plugins/libhx-$name.so ]] || { printf 'Set KOYA_PLUGIN_DIR to matching dbus and process plugins.\n' >&2; exit 1; }
   ln -sfn -- "$(realpath -- "$plugins/libhx-$name.so")" "$root/build/native/modules/libhx-$name.so"

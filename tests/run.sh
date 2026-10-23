@@ -25,6 +25,7 @@ if [[ ${1:-} != --inside ]]; then
 fi
 export DBUS_SYSTEM_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS
 export GIO_USE_VFS=local
+KOYA_PLUGIN_DIR="$root/build/native/modules" bash "$root/tests/greeter-modules.sh"
 KOYA_PLUGIN_DIR="$root/build/native/modules" bash "$root/tests/caffeine.sh"
 status=0
 timeout -k 2 10 "$KOYA_BIN" -n "$root/build/native/modules" -m "$root" -i tests/updates-native.js > "$XDG_RUNTIME_DIR/updates.log" 2>&1 || status=$?

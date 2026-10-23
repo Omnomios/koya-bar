@@ -317,11 +317,17 @@ export async function createGreeter({ preview = false, surface = 'raw' } = {}) {
       await controller.begin(returning, sessions[selected]);
     }
     return { win, dispose };
-  } catch (error) { await dispose(); throw error; }
+  } catch (error) {
+    // Cleanup failure must not hide the exception that prevented sign-in.
+    try { await dispose(); } catch (cleanup) { Log.error('Login cleanup: ' + cleanup); }
+    throw error;
+  }
 }
 
 export default function main() {
   setTimeout(() => createGreeter().catch(error => {
-    Log.error('Login screen: ' + error); setTimeout(() => Engine.quit(), 50);
+    Log.error('Login screen: ' + error);
+    if (error?.stack) Log.error(error.stack);
+    setTimeout(() => Engine.quit(), 50);
   }), 0);
 }
