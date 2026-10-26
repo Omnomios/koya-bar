@@ -52,8 +52,6 @@ async function build() {
   const updateInput = source => Promise.all([...screens.values()].filter(screen => screen.input !== source).map(screen => screen.input.setValue(password)));
   const updateAvailability = () => Promise.all([...screens.values()].map(async screen => {
     const disabled = !confirmed || controller.busy || controller.unlocked;
-    await UI.setEnabled(screen.win, screen.fingerprintButton, fingerprintReady);
-    await UI.setHitTarget(screen.win, screen.fingerprintButton, fingerprintReady && !disabled && !controller.fingerprintBusy);
     await screen.input.setDisabled(disabled);
     if (!disabled && !screen.input.isFocused()) await screen.input.focus();
   }));
@@ -63,7 +61,10 @@ async function build() {
   };
   const scan = async () => {
     if (!confirmed || !fingerprintReady || password || controller.busy || controller.unlocked) return;
-    const checking = controller.scan();
+    const checking = controller.scanWhile({
+      enabled: () => confirmed && fingerprintReady && !password && !controller.busy && !controller.unlocked,
+      changed: updateAvailability
+    });
     await updateAvailability();
     if (await checking) await finishUnlock();
     else await updateAvailability();
@@ -90,8 +91,8 @@ async function build() {
     const size = { x: info.width, y: info.height };
     const inner = AUTH_CARD_WIDTH - AUTH_CARD_PADDING * 2;
     // The card: avatar and name, the password, status and Unlock.
-    const cardHeight = AUTH_CARD_PADDING * 2 + AVATAR_SIZE + SPACE.l + 48 + SPACE.m + 28 + SPACE.s + 44 + SPACE.s + 32;
-    let input, status, avatar, name, fingerprintButton;
+    const cardHeight = AUTH_CARD_PADDING * 2 + AVATAR_SIZE + SPACE.l + 48 + SPACE.m + 44 + SPACE.s + 44;
+    let input, status, avatar, name;
     const screen = await authScreen(win, { size, name: 'lock', cardHeight, clock: clockSettings, build: async card => {
       const person = await UI.createElement(win, { layout: { type: 'row', gap: SPACE.m, alignItems: 'center' }, item: { size: { x: 'auto', y: AVATAR_SIZE }, margin: { t: 0, r: 0, b: SPACE.l - SPACE.s, l: 0 } } });
       [avatar, name] = await Promise.all([
@@ -104,19 +105,21 @@ async function build() {
       const passwordBox = await passwordInput(win, { width: inner, height: 48, size: TYPE.body, disabled: true, textId: 'lock-password', id: 'lock-password-input',
         onSubmit: submit, onInput: value => {
           password = value; updateInput(input).catch(() => {});
-          if (value && controller.fingerprintBusy) controller.cancelFingerprint().then(() => {
-            if (!controller.busy && !controller.unlocked) setStatus('Enter your password to unlock');
+          if (value) controller.cancelFingerprint().then(() => {
+            if (!controller.busy && !controller.unlocked) {
+              if (password) setStatus('Enter your password to unlock');
+              else scan().catch(() => {});
+            }
             updateAvailability().catch(() => {});
           });
+          else scan().catch(() => {});
         } }).then(control => { input = control; return control.master.id; });
-      status = await text(win, null, message, TYPE.caption, inner, 28, TEXT.accent);
+      status = await text(win, null, message, TYPE.caption, inner, 44, TEXT.accent);
       const unlock = await button(win, null, 'Unlock', inner, 44, submit, { colour: SURFACE.accent, labelColour: TEXT.onAccent, size: TYPE.body });
-      fingerprintButton = await button(win, null, 'Use fingerprint', inner, 32, async () => { password = ''; await updateInput(); await scan(); }, { size: TYPE.caption });
-      await UI.setElementId(win, fingerprintButton, 'lock-fingerprint');
       // Reading order made explicit (siblings sort by order, then creation).
-      for (const [index, id] of [person, passwordBox, status, unlock, fingerprintButton].entries()) { await UI.setLayoutOrder(win, id, index); await UI.attach(win, card.content, id); }
+      for (const [index, id] of [person, passwordBox, status, unlock].entries()) { await UI.setLayoutOrder(win, id, index); await UI.attach(win, card.content, id); }
     } });
-    screen.input = input; screen.status = status; screen.avatar = avatar; screen.fingerprintButton = fingerprintButton;
+    screen.input = input; screen.status = status; screen.avatar = avatar;
     screens.set(display.display, screen);
     avatar.setUser(user);
     await updateInput();
@@ -131,7 +134,7 @@ async function build() {
   };
   const accepts = event => confirmed && !controller.busy && [...screens.values()].some(screen => screen.win === event.id);
   Event.on('keyDown', event => {
-    if (accepts(event) && [1, 65307].includes(Number(event.key))) { password = ''; updateInput(); }
+    if (accepts(event) && [1, 65307].includes(Number(event.key))) { password = ''; updateInput().then(scan).catch(() => {}); }
   });
   await sync();
   if (!screens.size) throw new Error('No lock display available');

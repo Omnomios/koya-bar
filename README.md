@@ -469,7 +469,10 @@ The installer backs up greetd's PAM file and adds a fingerprint-first attempt
 (maximum three tries, ten-second timeout), followed by its existing password
 stack. It only edits the stock Arch greetd auth stack; custom policies require
 manual review. It does not restart greetd or change `system-auth`.
-Fingerprint unlock also runs PAM account checks. Typing a password cancels the
+The lock screen shows PAM retry prompts and restarts ended scans automatically.
+Retries start after two seconds, backing off to at most 30 seconds if failures
+continue. Typing a password cancels both scanning and pending retries. There is no retry
+button. Fingerprint unlock also runs PAM account checks. Typing a password cancels the
 lock screen's fingerprint transaction before starting password authentication.
 
 The installed shell does not automatically use this checkout. Test enrollment

@@ -11,12 +11,15 @@ cat > "$work/koya-fingerprint-auth" <<'HELPER'
 case "$KOYA_FINGERPRINT_FIXTURE" in
   success) exit 0 ;;
   denied) exit 1 ;;
+  attempts) exit 4 ;;
+  account) exit 3 ;;
+  retry) printf '%s\n' 'Failed to match fingerprint'; sleep .05; printf '%s\n' 'Touch the sensor again'; sleep .05; exit 0 ;;
   cancel) exec sleep 30 ;;
 esac
 exit 2
 HELPER
 chmod 755 "$work/koya-fingerprint-auth"
-for mode in success denied cancel; do
+for mode in success denied cancel retry attempts account; do
   KOYA_FINGERPRINT_FIXTURE=$mode timeout -k 2 10 "${KOYA_BIN:-koya}" -m "$root" -n "$work" -i tests/fingerprint-native.js > "$work/log" 2>&1
   cat "$work/log"
   rg -q KOYA_FINGERPRINT_NATIVE_PASS "$work/log"

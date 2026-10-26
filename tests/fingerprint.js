@@ -72,5 +72,29 @@ export async function test() {
   assert.equal(await check({ ok: true }, 'finished'), false);
   assert.equal(unlocks, 1);
   assert.equal(await check({ ok: true }, 'locked'), true); assert.equal(unlocks, 2);
+  // Completed transactions restart without a button; cancelling the wait
+  // prevents a stale timer from starting another authentication process.
+  let attempts = 0, releases = 0;
+  const pauses = [], statuses = [];
+  const continuous = createLockController({
+    fingerprint: { verify: async progress => {
+      progress('Fixture sensor prompt');
+      return ++attempts < 3 ? { ok: false, reason: 'attempts' } : { ok: true };
+    }, cancel: () => {} }, lockState: async () => 'locked',
+    unlock: async () => { releases++; return true; }, onStatus: text => statuses.push(text)
+  });
+  assert.equal(await continuous.scanWhile({ enabled: () => true, pause: async ms => pauses.push(ms) }), true);
+  assert.deepEqual(pauses, [2000, 4000]); assert.equal(releases, 1);
+  assert(statuses.includes('Fixture sensor prompt'));
+  let wake, scansAfterCancel = 0;
+  const pendingRetry = createLockController({ fingerprint: {
+    verify: async () => { scansAfterCancel++; return { ok: false, reason: 'attempts' }; }, cancel: () => {}
+  }, lockState: async () => 'locked', unlock: async () => assert.fail('Cancelled scan unlocked') });
+  const watching = pendingRetry.scanWhile({ enabled: () => true, pause: () => new Promise(resolve => { wake = resolve; }) });
+  await tick(); await pendingRetry.cancelFingerprint(); wake();
+  assert.equal(await watching, false); assert.equal(scansAfterCancel, 1);
+  const accountDenied = createLockController({ fingerprint: { verify: async () => ({ ok: false, reason: 'account' }), cancel: () => {} },
+    lockState: async () => 'locked', unlock: async () => assert.fail('Account denial unlocked') });
+  assert.equal(await accountDenied.scanWhile({ enabled: () => true, pause: async () => assert.fail('Account denial must not loop') }), false);
   Log.info('Fingerprint enrollment, ownership, cancellation and lock fallback: passed');
 }

@@ -11,6 +11,15 @@ static int conversation(int count, const pam_message **messages, pam_response **
     if (count < 1 || count > PAM_MAX_NUM_MSG) return PAM_CONV_ERR;
     for (int i = 0; i < count; ++i)
         if (messages[i]->msg_style != PAM_TEXT_INFO && messages[i]->msg_style != PAM_ERROR_MSG) return PAM_CONV_ERR;
+    // Only informational PAM messages reach the lock UI; never request secrets.
+    for (int i = 0; i < count; ++i) {
+        const unsigned char *text = reinterpret_cast<const unsigned char *>(messages[i]->msg);
+        if (!text) continue;
+        for (int j = 0; text[j] && j < 2048; ++j)
+            putchar(text[j] < 32 || text[j] == 127 ? ' ' : text[j]);
+        putchar('\n');
+    }
+    fflush(stdout);
     *responses = static_cast<pam_response *>(calloc(count, sizeof(pam_response)));
     return *responses ? PAM_SUCCESS : PAM_BUF_ERR;
 }
@@ -25,8 +34,9 @@ int main() {
     pam_handle_t *pam = nullptr;
     int result = pam_start("koya-fingerprint", account->pw_name, &conv, &pam);
     if (result == PAM_SUCCESS) result = pam_authenticate(pam, PAM_DISALLOW_NULL_AUTHTOK);
-    if (result == PAM_SUCCESS) result = pam_acct_mgmt(pam, 0);
+    const bool authenticated = result == PAM_SUCCESS;
+    if (authenticated) result = pam_acct_mgmt(pam, 0);
     const bool accepted = result == PAM_SUCCESS;
     if (pam) pam_end(pam, result);
-    return accepted ? 0 : 1;
+    return accepted ? 0 : authenticated ? 3 : result == PAM_MAXTRIES ? 4 : result == PAM_AUTHINFO_UNAVAIL ? 5 : 1;
 }

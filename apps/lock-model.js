@@ -1,8 +1,8 @@
 export function createLockController({ authenticate, fingerprint, unlock, lockState, onStatus = () => {}, now = () => Date.now() }) {
   let busy = false, failures = 0, retryAt = 0, unlocked = false;
-  let fingerprintBusy = false, generation = 0, verification;
+  let fingerprintBusy = false, generation = 0, verification, fingerprintRetry = 0, watchGeneration = 0, fingerprintLimited = false;
   const cancelFingerprint = async () => {
-    generation++;
+    generation++; watchGeneration++;
     if (verification) { fingerprint.cancel(); await verification.catch(() => {}); }
   };
   const release = async () => {
@@ -12,19 +12,49 @@ export function createLockController({ authenticate, fingerprint, unlock, lockSt
   };
   return {
     get busy() { return busy; }, get unlocked() { return unlocked; },
+    get fingerprintRetry() { return fingerprintRetry; },
     get fingerprintBusy() { return fingerprintBusy; },
     cancelFingerprint,
+    async scanWhile({ enabled, changed = async () => {}, pause = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
+      if (fingerprintBusy || busy || unlocked) return false;
+      const watching = ++watchGeneration;
+      let retries = 0;
+      while (watching === watchGeneration && enabled()) {
+        const checking = this.scan();
+        await changed();
+        if (await checking) return true;
+        await changed();
+        if (watching !== watchGeneration || !enabled() || !fingerprintRetry) return false;
+        // Failed transactions release the reader before retrying. Back off if
+        // the device repeatedly fails instead of spinning new PAM processes.
+        const delay = fingerprintLimited ? Math.min(30000, fingerprintRetry * 2 ** Math.min(retries++, 5)) : fingerprintRetry;
+        onStatus(`Scanning resumes in ${Math.ceil(delay / 1000)} seconds. Password also works.`);
+        await pause(delay);
+      }
+      return false;
+    },
     async scan() {
       if (!fingerprint || busy || fingerprintBusy || unlocked) return false;
       const token = ++generation;
-      fingerprintBusy = true;
+      fingerprintBusy = true; fingerprintRetry = 0; fingerprintLimited = false;
       try {
         if (await lockState() !== 'locked' || token !== generation || busy) return false;
         onStatus('Touch the fingerprint sensor, or enter your password');
-        verification = Promise.resolve(fingerprint.verify());
+        verification = Promise.resolve(fingerprint.verify(message => {
+          if (token === generation && !busy && !unlocked && typeof message === 'string') onStatus(message);
+        }));
         const result = await verification;
         if (token !== generation || busy || unlocked) return false;
-        if (result?.ok !== true) { onStatus('Use your password or try your fingerprint again'); return false; }
+        if (result?.ok !== true) {
+          if (result?.cancelled) return false;
+          if (['configuration', 'account'].includes(result?.reason)) {
+            onStatus('Fingerprint unavailable. Use your password.'); return false;
+          }
+          fingerprintLimited = result?.reason === 'attempts';
+          fingerprintRetry = 2000;
+          onStatus(result?.reason === 'attempts' ? 'Too many attempts. Restarting shortly…' : 'Restarting fingerprint scan…');
+          return false;
+        }
         // Only one authentication method may commit the compositor handoff.
         busy = true;
         try { return await release(); } finally { busy = false; }
