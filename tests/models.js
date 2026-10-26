@@ -11,6 +11,7 @@ import { test as test7 } from './audio.js';
 import { test as test8 } from './session-actions.js';
 import { test as test9 } from './displays.js';
 import { test as fingerprintTest } from './fingerprint.js';
+import { test as sessionStateTest } from './session-state.js';
 export default function main() {
   setTimeout(async () => {
     try {
@@ -25,6 +26,7 @@ export default function main() {
       await test8();
       await test9();
       await fingerprintTest();
+      await sessionStateTest();
       Log.info('KOYA_MODEL_TEST_PASS');
     } catch (error) { Log.error('KOYA_MODEL_TEST_FAIL: ' + error.stack); }
     finally { Engine.quit(); }
