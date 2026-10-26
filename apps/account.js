@@ -9,6 +9,7 @@ import { passwordInput } from './password-input.js';
 import { chooseImage } from './portal.js';
 import { button, pill, icon, text, toggle, children } from './touch-ui.js';
 import { greeterAutologin } from './greeter-autologin.js';
+import { fingerprintPage as buildFingerprintPage } from './fingerprint-page.js';
 import { presets } from './motion.js';
 import { SPACE, TYPE, TEXT, SURFACE, CLEAR, HIGHLIGHT, FONT, FONT_STRONG, configureTheme } from './theme.js';
 
@@ -38,7 +39,8 @@ export default async function main() {
   const drafts = { name: '', email: '' }, edited = { name: false, email: false };
   const frame = await appFrame({ title: 'Account', namespace: 'koya-account',
     onBack: () => go(overview, -1), onClose: () => frame.current?.dispose?.() });
-  const go = (build, direction) => frame.go(build, { title: build === overview ? 'Account' : 'Password', back: build !== overview, direction });
+  const fingerprintsPage = () => buildFingerprintPage(frame);
+  const go = (build, direction) => frame.go(build, { title: build === overview ? 'Account' : build === fingerprintsPage ? 'Fingerprints' : 'Password', back: build !== overview, direction });
   const report = (action, error) => {
     Log.error('Account ' + action + ': ' + error);
     frame.flash(/denied|authorized|permission/i.test(String(error)) ? 'Permission to change your account was denied' : 'Could not ' + action, TEXT.accent, 4000);
@@ -90,9 +92,9 @@ export default async function main() {
     return { ...surface, height };
   };
   // A labelled row: the key, then the given control.
-  const row = async (parent, key, control) => {
+  const row = async (parent, key, control, keyWidth = KEY_WIDTH) => {
     const line = await UI.createElement(frame.win, { layout: { type: 'row', alignItems: 'center', gap: SPACE.s }, item: { size: { x: 'auto', y: ROW } } });
-    const label = await text(frame.win, line, key, TYPE.caption, KEY_WIDTH, ROW, TEXT.secondary, FONT, 'left');
+    const label = await text(frame.win, line, key, TYPE.caption, keyWidth, ROW, TEXT.secondary, FONT, 'left');
     await Promise.all([UI.setLayoutOrder(frame.win, label, 0), UI.setLayoutOrder(frame.win, control, 1), UI.attach(frame.win, line, control)]);
     await UI.attach(frame.win, parent, line);
     return line;
@@ -144,7 +146,7 @@ export default async function main() {
     // greeter installed) automatic login.
     const autologin = greeterAutologin.available();
     await section(column, 'Sign-in');
-    const signInCard = await card(column, autologin ? 2 : 1);
+    const signInCard = await card(column, autologin ? 3 : 2);
     const change = await pill(win, null, 'Change…', ACTION_WIDTH, () => go(passwordPage, 1), { height: 28 });
     const passwordLine = await UI.createElement(win, { layout: { type: 'row', alignItems: 'center', gap: SPACE.s }, item: { size: { x: 'auto', y: ROW } } });
     const passwordParts = [await text(win, passwordLine, 'Password', TYPE.caption, KEY_WIDTH, ROW, TEXT.secondary, FONT, 'left'),
@@ -152,6 +154,9 @@ export default async function main() {
     await Promise.all([...passwordParts.map((id, index) => UI.setLayoutOrder(win, id, index)), UI.attach(win, passwordLine, change)]);
     await UI.attach(win, signInCard.content, passwordLine);
     await UI.setElementId(win, change, 'account-change-password');
+    const fingerprints = await pill(win, null, 'Manage…', ACTION_WIDTH, () => go(fingerprintsPage, 1), { height: 28 });
+    await row(signInCard.content, 'Fingerprints', fingerprints, 100);
+    await UI.setElementId(win, fingerprints, 'account-fingerprints');
     let autologinSwitch, autologinOn = false, autologinBusy = false;
     const toggleAutologin = async () => {
       if (autologinBusy || busy || frame.closing) return;

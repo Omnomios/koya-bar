@@ -1,0 +1,5 @@
+#%PAM-1.0
+# Fingerprint-only authentication for the unprivileged Koya lock helper.
+# Password fallback is a separate transaction through KOYA_PAM_SERVICE.
+auth required pam_fprintd.so max-tries=3 timeout=10
+account include system-auth

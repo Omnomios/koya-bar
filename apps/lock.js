@@ -5,8 +5,11 @@ import * as Engine from 'Helix/Engine';
 import * as Desktop from 'Module/desktop';
 import * as Process from 'Module/process';
 import * as PAM from 'Module/pam';
+import * as Fingerprint from 'Module/fingerprint';
+import { system } from 'Module/dbus';
 import * as Log from 'Helix/Log';
 import { createLockController } from './lock-model.js';
+import { createFingerprintService } from './fingerprint-model.js';
 import { clockPreferences } from './clock-model.js';
 import { readSettings } from './settings-model.js';
 import { configureWallpaper } from './wallpaper-surface.js';
@@ -38,27 +41,40 @@ async function build() {
   await configureWallpaper(settings);
   let clockSettings = clockPreferences(settings);
   const screens = new Map();
-  let password = '', message = 'Enter your password to unlock', confirmed = false;
+  let password = '', message = 'Enter your password to unlock', confirmed = false, fingerprintReady = false;
   const setStatus = value => {
     message = value;
     for (const screen of screens.values()) UI.setTextString(screen.win, screen.status, value).catch(() => {});
   };
   const controller = createLockController({ authenticate: answer => PAM.authenticate({ service, user, password: answer }),
+    fingerprint: Fingerprint,
     lockState: () => Compositor.sessionLockState(), unlock: () => Compositor.unlockSession(), onStatus: setStatus });
   const updateInput = source => Promise.all([...screens.values()].filter(screen => screen.input !== source).map(screen => screen.input.setValue(password)));
   const updateAvailability = () => Promise.all([...screens.values()].map(async screen => {
     const disabled = !confirmed || controller.busy || controller.unlocked;
+    await UI.setEnabled(screen.win, screen.fingerprintButton, fingerprintReady);
+    await UI.setHitTarget(screen.win, screen.fingerprintButton, fingerprintReady && !disabled && !controller.fingerprintBusy);
     await screen.input.setDisabled(disabled);
     if (!disabled && !screen.input.isFocused()) await screen.input.focus();
   }));
+  const finishUnlock = async () => {
+    await setLockedHint(false).catch(error => Log.error('Unlock session state: ' + error));
+    Engine.quit();
+  };
+  const scan = async () => {
+    if (!confirmed || !fingerprintReady || password || controller.busy || controller.unlocked) return;
+    const checking = controller.scan();
+    await updateAvailability();
+    if (await checking) await finishUnlock();
+    else await updateAvailability();
+  };
   const submit = async () => {
     if (!confirmed || controller.busy || controller.unlocked) return;
     let answer = password; password = '';
     const checking = controller.submit(answer); answer = '';
     await Promise.all([updateInput(), updateAvailability()]);
     if (await checking) {
-      await setLockedHint(false).catch(error => Log.error('Unlock session state: ' + error));
-      Engine.quit();
+      await finishUnlock();
     }
     else {
       for (const screen of screens.values()) screen.play(screen.card, presets.shake());
@@ -74,8 +90,8 @@ async function build() {
     const size = { x: info.width, y: info.height };
     const inner = AUTH_CARD_WIDTH - AUTH_CARD_PADDING * 2;
     // The card: avatar and name, the password, status and Unlock.
-    const cardHeight = AUTH_CARD_PADDING * 2 + AVATAR_SIZE + SPACE.l + 48 + SPACE.m + 28 + SPACE.s + 44;
-    let input, status, avatar, name;
+    const cardHeight = AUTH_CARD_PADDING * 2 + AVATAR_SIZE + SPACE.l + 48 + SPACE.m + 28 + SPACE.s + 44 + SPACE.s + 32;
+    let input, status, avatar, name, fingerprintButton;
     const screen = await authScreen(win, { size, name: 'lock', cardHeight, clock: clockSettings, build: async card => {
       const person = await UI.createElement(win, { layout: { type: 'row', gap: SPACE.m, alignItems: 'center' }, item: { size: { x: 'auto', y: AVATAR_SIZE }, margin: { t: 0, r: 0, b: SPACE.l - SPACE.s, l: 0 } } });
       [avatar, name] = await Promise.all([
@@ -86,13 +102,21 @@ async function build() {
       ]);
       await Promise.all([UI.attach(win, person, avatar.id), UI.attach(win, person, name), UI.setElementId(win, name, 'lock-name')]);
       const passwordBox = await passwordInput(win, { width: inner, height: 48, size: TYPE.body, disabled: true, textId: 'lock-password', id: 'lock-password-input',
-        onSubmit: submit, onInput: value => { password = value; updateInput(input).catch(() => {}); } }).then(control => { input = control; return control.master.id; });
+        onSubmit: submit, onInput: value => {
+          password = value; updateInput(input).catch(() => {});
+          if (value && controller.fingerprintBusy) controller.cancelFingerprint().then(() => {
+            if (!controller.busy && !controller.unlocked) setStatus('Enter your password to unlock');
+            updateAvailability().catch(() => {});
+          });
+        } }).then(control => { input = control; return control.master.id; });
       status = await text(win, null, message, TYPE.caption, inner, 28, TEXT.accent);
       const unlock = await button(win, null, 'Unlock', inner, 44, submit, { colour: SURFACE.accent, labelColour: TEXT.onAccent, size: TYPE.body });
+      fingerprintButton = await button(win, null, 'Use fingerprint', inner, 32, async () => { password = ''; await updateInput(); await scan(); }, { size: TYPE.caption });
+      await UI.setElementId(win, fingerprintButton, 'lock-fingerprint');
       // Reading order made explicit (siblings sort by order, then creation).
-      for (const [index, id] of [person, passwordBox, status, unlock].entries()) { await UI.setLayoutOrder(win, id, index); await UI.attach(win, card.content, id); }
+      for (const [index, id] of [person, passwordBox, status, unlock, fingerprintButton].entries()) { await UI.setLayoutOrder(win, id, index); await UI.attach(win, card.content, id); }
     } });
-    screen.input = input; screen.status = status; screen.avatar = avatar;
+    screen.input = input; screen.status = status; screen.avatar = avatar; screen.fingerprintButton = fingerprintButton;
     screens.set(display.display, screen);
     avatar.setUser(user);
     await updateInput();
@@ -120,13 +144,21 @@ async function build() {
   if (!confirmed) throw new Error('The compositor did not confirm the lock');
   await setLockedHint(true).catch(error => Log.error('Lock session state: ' + error));
   await updateAvailability();
+  if (Fingerprint.available()) {
+    const reader = createFingerprintService(system);
+    reader.refresh().then(async () => {
+      fingerprintReady = reader.state.available && reader.state.fingers.length > 0;
+      await reader.dispose(); await updateAvailability();
+      if (!password && !controller.busy && !controller.unlocked) await scan();
+    }).catch(() => {});
+  }
   // Hypridle observes the compositor lock and continues its display/sleep policy.
   let updating = false;
   setInterval(async () => {
     if (controller.unlocked || updating) return;
     updating = true;
     try {
-      if (await Compositor.sessionLockState() === 'finished') { Engine.quit(); return; }
+      if (await Compositor.sessionLockState() === 'finished') { await controller.cancelFingerprint(); Engine.quit(); return; }
       const settings = readSettings(Desktop.loadPreferences());
       await configureTheme(settings);
       clockSettings = clockPreferences(settings);

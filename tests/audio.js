@@ -1,6 +1,8 @@
-import assert from 'node:assert/strict';
+import assert from './assert.js';
+import * as Log from 'Helix/Log';
 import { audioOutputs, routeOutput, channelVolumes } from '../apps/audio-model.js';
 
+export async function test() {
 // Representative pactl JSON: PipeWire identifies the card through device.id,
 // while PulseAudio can supply a top-level card index. Ports differ from sinks.
 const card = { index: 7, name: 'alsa_card.usb', properties: { 'device.description': 'Creative Stage SE' },
@@ -76,4 +78,6 @@ await routeOutput(async args => {
   if (args[0] === 'move-sink-input') throw new Error('No such entity');
   return '';
 }, outputs.find(item => item.sink === bluetooth.name));
-console.log('Audio devices, physical ports, profile selection and playback routing: passed');
+Log.info('Audio devices, physical ports, profile selection and playback routing: passed');
+
+}

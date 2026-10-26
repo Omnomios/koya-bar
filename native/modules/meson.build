@@ -11,6 +11,12 @@ shared_library('hx-sleep', 'sleep.cpp', name_prefix: 'lib',
   override_options: ['b_lundef=false'], include_directories: include_directories('../sdk'),
   dependencies: [gio, dependency('threads')], cpp_args: ['-fvisibility=hidden'])
 
+shared_library('hx-fingerprint', 'fingerprint.cpp', name_prefix: 'lib',
+  override_options: ['b_lundef=false'], include_directories: include_directories('../sdk'),
+  dependencies: [gio, dependency('threads'), meson.get_compiler('cpp').find_library('dl')],
+  cpp_args: ['-fvisibility=hidden'])
+executable('koya-fingerprint-auth', '../fingerprint-auth.cpp', dependencies: dependency('pam'))
+
 ssh_agent = executable('koya-ssh-agent', 'ssh-agent.cpp', dependencies: [gio, dependency('threads')])
 executable('koya-askpass', '../askpass.cpp', dependencies: [gio])
 shared_library('hx-polkit-agent', 'polkit-agent.cpp', name_prefix: 'lib',

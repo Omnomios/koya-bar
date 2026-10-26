@@ -1,6 +1,8 @@
-import assert from 'node:assert/strict';
+import assert from './assert.js';
+import * as Log from 'Helix/Log';
 import { createLoginController } from '../apps/login-model.js';
 
+export async function test() {
 const session = { name: 'Hyprland', cmd: ['/usr/bin/Hyprland'], env: ['XDG_SESSION_TYPE=wayland'] };
 const requests = [], states = [], handoff = [];
 let replies = [
@@ -76,4 +78,29 @@ const cancelled = createLoginController({ request: async text => {
 await cancelled.begin('alice', session); await cancelled.cancel();
 assert.equal(cancelRequests.at(-1).type, 'cancel_session');
 assert.equal(cancelled.state.phase, 'username');
-console.log('Login conversation, prompts, cancellation and session handoff: passed');
+// Fingerprint PAM conversations can finish without ever asking for a secret.
+const biometricStates = [], biometricRequests = [];
+const biometricReplies = [
+  { type: 'auth_message', auth_message_type: 'info', auth_message: 'Place your finger on the reader' },
+  { type: 'success' }, { type: 'success' }
+];
+let biometricStarts = 0;
+const biometric = createLoginController({ request: async text => {
+  biometricRequests.push(JSON.parse(text)); return biometricReplies.shift();
+}, onState: state => biometricStates.push(state), onStarted: async () => { biometricStarts++; } });
+assert.equal(await biometric.begin('alice', session), true);
+assert.equal(biometricStarts, 1);
+assert(biometricStates.some(state => state.busy && state.notice === 'Place your finger on the reader'));
+assert.deepEqual(biometricRequests[1], { type: 'post_auth_message_response', response: null });
+const fallbackReplies = [
+  { type: 'auth_message', auth_message_type: 'info', auth_message: 'Place your finger on the reader' },
+  { type: 'auth_message', auth_message_type: 'error', auth_message: 'Verification timed out' },
+  { type: 'auth_message', auth_message_type: 'secret', auth_message: 'Password:' }
+];
+const fallback = createLoginController({ request: async () => fallbackReplies.shift(),
+  onStarted: () => assert.fail('Fingerprint timeout must not start a session') });
+assert.equal(await fallback.begin('alice', session), false);
+assert.equal(fallback.state.phase, 'prompt'); assert.equal(fallback.state.secret, true);
+Log.info('Login conversation, prompts, cancellation and session handoff: passed');
+
+}

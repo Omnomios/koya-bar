@@ -59,7 +59,8 @@ export function createLoginController({ request, onState = () => {}, onStarted }
         username = username.trim();
         if (!username || username.length > 256 || /[\x00-\x1f\x7f]/.test(username)) throw new Error('Enter a valid user name.');
         if (!selected?.cmd?.length) throw new Error('Choose an installed Wayland session.');
-        session = selected; state.username = username; state.notice = ''; state.message = 'Signing in…'; authenticating = true;
+        session = selected; state.username = username; state.phase = 'authenticating'; state.notice = ''; state.message = 'Signing in…'; authenticating = true;
+        await notify();
         return advance(await send({ type: 'create_session', username }));
       });
     },

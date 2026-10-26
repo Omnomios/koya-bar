@@ -4,5 +4,7 @@
   "license": "CC-BY-4.0",
   "private": true,
   "type": "module",
-  "scripts": { "test": "node tests/login.mjs && node tests/lock.mjs && node tests/accounts.mjs && node tests/ssh-agent-model.mjs && node tests/authentication.mjs && node tests/authentication-view.mjs && node tests/updates.mjs && node tests/audio.mjs && node tests/session-actions.mjs && node tests/displays.mjs" }
+  "scripts": {
+    "test": "bash tests/models.sh"
+  }
 }

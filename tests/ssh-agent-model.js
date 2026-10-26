@@ -1,5 +1,8 @@
-import assert from 'node:assert/strict';
+import assert from './assert.js';
+import * as Log from 'Helix/Log';
 import { promptEvents, promptReply, createPromptQueue } from '../apps/ssh-agent-model.js';
+
+export async function test() {
 const events = [], read = promptEvents(event => events.push(event));
 read('REA'); read('DY\nP 1 Enter%20pass'); read('phrase%20%E9%AD%9A\nD 1\n');
 assert.deepEqual(events, [{ type: 'ready' }, { type: 'prompt', id: 1, text: 'Enter passphrase 魚' }, { type: 'dismiss', id: 1 }]);
@@ -36,4 +39,6 @@ assert.deepEqual(errors, []);
 const failures = [];
 const broken = createPromptQueue({ show: async () => { throw new Error('No display'); }, reply: line => failures.push(line) });
 await broken.receive({ type: 'prompt', id: 5, text: 'unavailable' }); assert.deepEqual(failures, ['C 5\n']);
-console.log('SSH prompt protocol and queue: passed');
+Log.info('SSH prompt protocol and queue: passed');
+
+}

@@ -449,6 +449,56 @@ The Koya lock screen reports its lock state to logind. An alternative locker
 must also maintain logind's `LockedHint` for authentication prompts to follow
 its lock state.
 
+## Fingerprint support (experimental)
+
+The `feature/fingerprint-auth` branch adds **Account → Sign-in → Fingerprints**
+for enrollment and removal using fprintd, fingerprint unlock with a separate
+password fallback, and display of fingerprint PAM prompts in the login greeter.
+Fingerprint records stay in fprintd; Koya does not store biometric data.
+
+On Arch, install `fprintd`, build the native modules, and run `./account.sh` from
+this checkout to enroll a finger. Enrollment does not require a PAM change.
+Enable lock authentication and optional greetd fingerprint login with:
+
+```bash
+sudo python3 ./install-fingerprint.py --greeter
+./lock.sh
+```
+
+The installer backs up greetd's PAM file and adds a fingerprint-first attempt
+(maximum three tries, ten-second timeout), followed by its existing password
+stack. It only edits the stock Arch greetd auth stack; custom policies require
+manual review. It does not restart greetd or change `system-auth`.
+Fingerprint unlock also runs PAM account checks. Typing a password cancels the
+lock screen's fingerprint transaction before starting password authentication.
+
+The installed shell does not automatically use this checkout. Test enrollment
+and locking with the scripts above. For greeter UI testing, `./greeter.sh
+--preview` runs the checkout without logging out. The existing
+`sudo ./install-greeter.sh` installs this checkout as the greeter (and changes
+its greetd configuration); use that only when ready for the real login test.
+A fingerprint login cannot unlock a password-encrypted keyring by itself.
+
+To remove the managed PAM rules, preserving other settings:
+
+```bash
+sudo python3 ./install-fingerprint.py --greeter --disable
+```
+
+Before merging, verify on the device: add and remove a finger; cancel enrollment
+and retry; unlock with the enrolled finger; ensure an unregistered finger cannot
+unlock; type a password during a scan; verify password fallback after a timeout;
+and log in through greetd using both methods. Verify the final enrolled finger
+can be removed and password authentication still works. These checks require a
+normal desktop session and are not replaced by simulated test results.
+
+Run the fingerprint D-Bus contract against a private fixture (requires
+`python-gobject` and permission to create local sockets):
+
+```bash
+bash tests/fingerprint-dbus.sh
+```
+
 ## Develop and test
 
 UI code is in `apps/`, artwork in `assets/`, and native modules in
@@ -458,10 +508,10 @@ The shell's release version lives in [`VERSION`](VERSION), independently of the
 Koya runtime version. Meson and release packaging should use this file. Run
 `./run.sh --version` to print it without launching the shell.
 
-Run the focused login, locking, account, authentication and update checks with Node.js:
+Run the model checks in Koya's own JavaScript runtime (no Node.js required):
 
 ```bash
-npm test
+bash tests/models.sh
 ```
 
 For native integration checks:

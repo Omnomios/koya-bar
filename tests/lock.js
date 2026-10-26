@@ -1,6 +1,8 @@
-import assert from 'node:assert/strict';
+import assert from './assert.js';
+import * as Log from 'Helix/Log';
 import { createLockController } from '../apps/lock-model.js';
 
+export async function test() {
 let unlocks = 0, authentication = 0, time = 1000, secure = 'locked';
 const locker = createLockController({ authenticate: async password => { authentication++; return { ok: password === 'fixture' }; },
   unlock: async () => { unlocks++; return true; }, lockState: async () => secure, now: () => time });
@@ -22,4 +24,6 @@ const checking = simultaneous.submit('fixture'); await Promise.resolve(); await 
 assert.equal(await simultaneous.submit('fixture'), false);
 secure = 'finished'; resolveAuthentication({ ok: true });
 assert.equal(await checking, false); assert.equal(unlocks, 1);
-console.log('Lock authentication and compositor handoff: passed');
+Log.info('Lock authentication and compositor handoff: passed');
+
+}
