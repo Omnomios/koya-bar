@@ -67,7 +67,7 @@ export async function fingerprintPage(frame) {
   await scroll.setContentHeight(height);
   page.height = Math.min(height, frame.stageHeight - 24);
   page.items.push(scroll.id);
-  page.dispose = async () => { page.alive = false; await service.dispose(); await rendering; };
+  page.dispose = async () => { page.alive = false; await service.dispose(); await rendering; await hands.dispose(); };
   await service.refresh();
   return page;
 }
