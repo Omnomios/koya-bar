@@ -1,7 +1,7 @@
 import assert from './assert.js';
 import * as Log from 'Helix/Log';
-import { createFingerprintService } from '../apps/fingerprint-model.js';
-import { createLockController } from '../apps/lock-model.js';
+import { createFingerprintService, suggestedFinger, enrollPrompt } from '../apps/fingerprint-model.js';
+import { createLockController, sensorMessage, SENSOR_PROMPT } from '../apps/lock-model.js';
 const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 export async function test() {
   const calls = []; let listener, enrolled = [], claimError, claimWait;
@@ -20,13 +20,21 @@ export async function test() {
   };
   const service = createFingerprintService(bus);
   const signal = (result, done = false, sender = ':1.42') => listener({ path: '/reader', interface: 'net.reactivated.Fprint.Device', member: 'EnrollStatus', sender, args: [result, done] });
-  await service.refresh(); assert.equal(service.state.available, true);
+  await service.refresh(); assert.equal(service.state.available, true, 'A reader without enrolled fingers still supports enrollment');
+  for (const reason of ['NoSuchDevice', 'ServiceUnknown']) {
+    let detached = false;
+    const missing = createFingerprintService({ ...bus, onSignal: () => {}, offSignal: () => { detached = true; },
+      async call() { throw new Error(reason); } });
+    await missing.refresh(); assert.equal(missing.state.available, false);
+    await missing.dispose(); assert(detached, 'The capability probe releases its signal listener');
+  }
   await assert.rejects(service.enroll('invalid'), /Invalid/);
   await service.enroll('right-index-finger');
   assert.equal(service.state.enrolling, true);
   signal('enroll-completed', true, ':1.99'); assert.equal(service.state.enrolling, true);
   signal('enroll-stage-passed'); assert.equal(service.state.completed, 1);
   signal('enroll-retry-scan'); assert.equal(service.state.completed, 1);
+  assert.equal(service.state.events, 2, 'Each enrollment report counts, retries included');
   enrolled = ['right-index-finger']; signal('enroll-completed', true); await tick();
   assert.equal(service.state.busy, false); assert.deepEqual(service.state.fingers, enrolled);
   assert.deepEqual(calls.slice(-3).map(c => c[0]), ['EnrollStop', 'Release', 'ListEnrolledFingers']);
@@ -96,5 +104,42 @@ export async function test() {
   const accountDenied = createLockController({ fingerprint: { verify: async () => ({ ok: false, reason: 'account' }), cancel: () => {} },
     lockState: async () => 'locked', unlock: async () => assert.fail('Account denial unlocked') });
   assert.equal(await accountDenied.scanWhile({ enabled: () => true, pause: async () => assert.fail('Account denial must not loop') }), false);
+  // Enrollment offers index fingers first, right before left, then thumbs.
+  assert.equal(suggestedFinger([]), 'right-index-finger');
+  assert.equal(suggestedFinger(['right-index-finger']), 'left-index-finger');
+  assert.equal(suggestedFinger(['right-index-finger', 'left-index-finger']), 'right-thumb');
+  assert.equal(suggestedFinger(['right-index-finger'], 'right'), 'right-thumb');
+  assert.equal(suggestedFinger(['right-thumb', 'right-index-finger', 'right-middle-finger', 'right-ring-finger', 'right-little-finger'], 'right'), '');
+  assert.equal(enrollPrompt('Preparing the fingerprint reader…'), 'Getting ready…');
+  assert.equal(enrollPrompt('Touch the sensor with your right thumb'), 'Touch the sensor');
+  assert.equal(enrollPrompt('Lift your finger, then touch again'), 'Lift, then touch again');
+  assert.equal(enrollPrompt('Centre your finger on the sensor'), 'Centre your finger on the sensor');
+  // pam_fprintd's sentences become a badge reaction and a few words.
+  assert.deepEqual(sensorMessage('Place your finger on the fingerprint reader'), { reaction: null, text: SENSOR_PROMPT });
+  assert.deepEqual(sensorMessage('Swipe your right index finger across Fixture Reader'), { reaction: null, text: SENSOR_PROMPT });
+  assert.deepEqual(sensorMessage('Failed to match fingerprint'), { reaction: 'mismatch', text: 'Not recognised' });
+  assert.deepEqual(sensorMessage('Place your finger on the reader again'), { reaction: 'adjust', text: 'Try again' });
+  assert.deepEqual(sensorMessage('Your finger was not centered, try swiping your finger again'), { reaction: 'adjust', text: 'Centre your finger' });
+  assert.deepEqual(sensorMessage('Verification timed out'), { reaction: null, text: SENSOR_PROMPT });
+  assert.deepEqual(sensorMessage('Posez votre doigt'), { reaction: null, text: 'Posez votre doigt' });
+  // A mismatch reports an error, then the prompt; too many attempts rest the
+  // sensor until a stated time; a timed-out scan restarts without a word.
+  let clock = 0; const phases = [], lines = [], outcomes = [{ ok: false, reason: 'retry' }, { ok: false, reason: 'attempts' }, { ok: true }];
+  const narrated = createLockController({
+    fingerprint: { verify: async progress => { progress('Failed to match fingerprint'); return outcomes.shift(); }, cancel: () => {} },
+    lockState: async () => 'locked', unlock: async () => true, now: () => clock,
+    onStatus: (text, tone = 'info') => lines.push([text, tone]), onSensor: (phase, detail) => phases.push(detail ? [phase, detail] : [phase])
+  });
+  assert.equal(await narrated.scanWhile({ enabled: () => true, pause: async ms => { clock += ms; } }), true);
+  assert.deepEqual(phases, [['listening'], ['mismatch'], ['listening'], ['mismatch'], ['mismatch'], ['resting', { resumeAt: 4000 }],
+    ['listening'], ['mismatch'], ['matched']]);
+  assert.deepEqual(lines.slice(0, 3), [[SENSOR_PROMPT, 'info'], ['Not recognised', 'error'], [SENSOR_PROMPT, 'info']]);
+  assert(lines.some(([text, tone]) => text === 'Too many attempts' && tone === 'error'));
+  assert(!lines.some(([text]) => /restart|resumes/i.test(text)), 'Retries are not narrated');
+  const refusedLines = [];
+  const refusing = createLockController({ authenticate: async () => ({ ok: false }), lockState: async () => 'locked',
+    unlock: async () => true, onStatus: (text, tone) => refusedLines.push([text, tone]) });
+  assert.equal(await refusing.submit('wrong'), false);
+  assert.deepEqual(refusedLines.at(-1), ['Incorrect password', 'error']);
   Log.info('Fingerprint enrollment, ownership, cancellation and lock fallback: passed');
 }

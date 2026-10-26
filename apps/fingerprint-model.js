@@ -3,6 +3,20 @@ const DEVICE = NAME + '.Device', MANAGER = NAME + '.Manager';
 export const fingers = ['left-thumb', 'left-index-finger', 'left-middle-finger', 'left-ring-finger', 'left-little-finger',
   'right-thumb', 'right-index-finger', 'right-middle-finger', 'right-ring-finger', 'right-little-finger'];
 export const fingerName = finger => String(finger).replace(/-/g, ' ').replace(/^./, c => c.toUpperCase());
+// The finger to offer first: index fingers, then thumbs, then the rest, right
+// before left. Optionally limited to one hand.
+const preference = ['index-finger', 'thumb', 'middle-finger', 'ring-finger', 'little-finger'];
+export function suggestedFinger(enrolled, hand) {
+  const order = preference.flatMap(kind => (hand ? [hand] : ['right', 'left']).map(side => side + '-' + kind));
+  return order.find(finger => !enrolled.includes(finger)) || '';
+}
+// The enrollment heading: a few words for the person, not the reader.
+export function enrollPrompt(message) {
+  if (!message || /^Preparing/.test(message)) return 'Getting ready…';
+  if (/^Touch the sensor with/.test(message)) return 'Touch the sensor';
+  if (message === 'Lift your finger, then touch again') return 'Lift, then touch again';
+  return message;
+}
 export function fingerprintError(error) {
   const text = String(error);
   if (/NoSuchDevice|ServiceUnknown|NameHasNoOwner/.test(text)) return 'No fingerprint reader available';
@@ -26,7 +40,9 @@ const prompts = {
 // Enrollment only. Verification used to unlock the session is owned by PAM.
 // All operations use the caller's account (empty username), never an arbitrary user.
 export function createFingerprintService(bus, { changed = () => {}, schedule = setTimeout, unschedule = clearTimeout } = {}) {
-  const state = { available: false, busy: false, enrolling: false, name: '', fingers: [], stages: 0, completed: 0, message: '' };
+  // `events` counts the reader's enrollment reports, so a repeated prompt
+  // (the same retry twice) still reads as a new one.
+  const state = { available: false, busy: false, enrolling: false, name: '', fingers: [], stages: 0, completed: 0, events: 0, message: '' };
   let path = '', owner = '', connected = false, closed = false, claimed = false, active = false;
   let generation = 0, timer, queue = Promise.resolve();
   const publish = () => { if (!closed) changed({ ...state, fingers: [...state.fingers] }); };
@@ -51,6 +67,7 @@ export function createFingerprintService(bus, { changed = () => {}, schedule = s
     }
     if (!state.enrolling || event.path !== path || event.interface !== DEVICE || event.member !== 'EnrollStatus' || event.sender !== owner) return;
     const [result, done] = event.args || [];
+    state.events++;
     if (result === 'enroll-stage-passed') { state.completed = Math.min(state.stages, state.completed + 1); state.message = 'Lift your finger, then touch again'; }
     else state.message = prompts[result] || (result === 'enroll-completed' ? 'Fingerprint added' : 'Touch the sensor again');
     publish();

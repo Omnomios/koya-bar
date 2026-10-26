@@ -9,7 +9,7 @@ import { passwordInput } from './password-input.js';
 import { chooseImage } from './portal.js';
 import { button, pill, icon, text, toggle, children } from './touch-ui.js';
 import { greeterAutologin } from './greeter-autologin.js';
-import { fingerprintPage as buildFingerprintPage } from './fingerprint-page.js';
+import { fingerprintPages } from './fingerprint-page.js';
 import { presets } from './motion.js';
 import { SPACE, TYPE, TEXT, SURFACE, CLEAR, HIGHLIGHT, FONT, FONT_STRONG, configureTheme } from './theme.js';
 
@@ -38,9 +38,11 @@ export default async function main() {
   let busy = false, profile;
   const drafts = { name: '', email: '' }, edited = { name: false, email: false };
   const frame = await appFrame({ title: 'Account', namespace: 'koya-account',
-    onBack: () => go(overview, -1), onClose: () => frame.current?.dispose?.() });
-  const fingerprintsPage = () => buildFingerprintPage(frame);
-  const go = (build, direction) => frame.go(build, { title: build === overview ? 'Account' : build === fingerprintsPage ? 'Fingerprints' : 'Password', back: build !== overview, direction });
+    onBack: () => go(frame.current?.back || overview, -1), onClose: () => frame.current?.dispose?.() });
+  // Pages may name where Back leads (`page.back`); otherwise the overview.
+  const fingerprints = fingerprintPages(frame, (build, direction) => go(build, direction));
+  const titles = new Map([[fingerprints.list, 'Fingerprints'], [fingerprints.add, 'Add Fingerprint'], [passwordPage, 'Password']]);
+  const go = (build, direction) => frame.go(build, { title: build === overview ? 'Account' : titles.get(build), back: build !== overview, direction });
   const report = (action, error) => {
     Log.error('Account ' + action + ': ' + error);
     frame.flash(/denied|authorized|permission/i.test(String(error)) ? 'Permission to change your account was denied' : 'Could not ' + action, TEXT.accent, 4000);
@@ -144,9 +146,9 @@ export default async function main() {
 
     // Sign-in: the password, changed on its own page, and (with the Koya
     // greeter installed) automatic login.
-    const autologin = greeterAutologin.available();
+    const autologin = greeterAutologin.available(), hasFingerprints = await fingerprints.available();
     await section(column, 'Sign-in');
-    const signInCard = await card(column, autologin ? 3 : 2);
+    const signInCard = await card(column, 1 + Number(autologin) + Number(hasFingerprints));
     const change = await pill(win, null, 'Change…', ACTION_WIDTH, () => go(passwordPage, 1), { height: 28 });
     const passwordLine = await UI.createElement(win, { layout: { type: 'row', alignItems: 'center', gap: SPACE.s }, item: { size: { x: 'auto', y: ROW } } });
     const passwordParts = [await text(win, passwordLine, 'Password', TYPE.caption, KEY_WIDTH, ROW, TEXT.secondary, FONT, 'left'),
@@ -154,9 +156,13 @@ export default async function main() {
     await Promise.all([...passwordParts.map((id, index) => UI.setLayoutOrder(win, id, index)), UI.attach(win, passwordLine, change)]);
     await UI.attach(win, signInCard.content, passwordLine);
     await UI.setElementId(win, change, 'account-change-password');
-    const fingerprints = await pill(win, null, 'Manage…', ACTION_WIDTH, () => go(fingerprintsPage, 1), { height: 28 });
-    await row(signInCard.content, 'Fingerprints', fingerprints, 100);
-    await UI.setElementId(win, fingerprints, 'account-fingerprints');
+    if (hasFingerprints) {
+      // Enrollment is available even when this reader has no enrolled fingers.
+      const manageHolder = await UI.createElement(win, { layout: { type: 'row', justifyContent: 'end' }, item: { size: { x: inner, y: ROW } } });
+      const manage = await pill(win, manageHolder, 'Manage…', ACTION_WIDTH, () => go(fingerprints.list, 1), { height: 28 });
+      await row(signInCard.content, 'Fingerprints', manageHolder);
+      await UI.setElementId(win, manage, 'account-fingerprints');
+    }
     let autologinSwitch, autologinOn = false, autologinBusy = false;
     const toggleAutologin = async () => {
       if (autologinBusy || busy || frame.closing) return;
