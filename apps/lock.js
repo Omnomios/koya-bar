@@ -5,7 +5,7 @@ import * as Engine from 'Helix/Engine';
 import * as Desktop from 'Module/desktop';
 import * as Process from 'Module/process';
 import * as PAM from 'Module/pam';
-import * as Fingerprint from 'Module/fingerprint';
+import { createFingerprintAuth } from './fingerprint-auth.js';
 import { system } from 'Module/dbus';
 import * as Log from 'Helix/Log';
 import { createLockController } from './lock-model.js';
@@ -36,6 +36,7 @@ export default function main() {
 }
 async function build() {
   const user = Desktop.userName(), service = Process.getEnv('KOYA_PAM_SERVICE', 'login');
+  const fingerprint = createFingerprintAuth(PAM, { user, configured: () => Process.exists('/etc/pam.d/koya-fingerprint') });
   const settings = readSettings(Desktop.loadPreferences());
   await configureTheme(settings);
   await configureWallpaper(settings);
@@ -47,7 +48,7 @@ async function build() {
     for (const screen of screens.values()) UI.setTextString(screen.win, screen.status, value).catch(() => {});
   };
   const controller = createLockController({ authenticate: answer => PAM.authenticate({ service, user, password: answer }),
-    fingerprint: Fingerprint,
+    fingerprint,
     lockState: () => Compositor.sessionLockState(), unlock: () => Compositor.unlockSession(), onStatus: setStatus });
   const updateInput = source => Promise.all([...screens.values()].filter(screen => screen.input !== source).map(screen => screen.input.setValue(password)));
   const updateAvailability = () => Promise.all([...screens.values()].map(async screen => {
@@ -147,7 +148,7 @@ async function build() {
   if (!confirmed) throw new Error('The compositor did not confirm the lock');
   await setLockedHint(true).catch(error => Log.error('Lock session state: ' + error));
   await updateAvailability();
-  if (Fingerprint.available()) {
+  if (fingerprint.available()) {
     const reader = createFingerprintService(system);
     reader.refresh().then(async () => {
       fingerprintReady = reader.state.available && reader.state.fingers.length > 0;

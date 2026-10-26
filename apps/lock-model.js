@@ -3,7 +3,8 @@ export function createLockController({ authenticate, fingerprint, unlock, lockSt
   let fingerprintBusy = false, generation = 0, verification, fingerprintRetry = 0, watchGeneration = 0, fingerprintLimited = false;
   const cancelFingerprint = async () => {
     generation++; watchGeneration++;
-    if (verification) { fingerprint.cancel(); await verification.catch(() => {}); }
+    const pending = verification;
+    if (pending) { await fingerprint.cancel(); await pending.catch(() => {}); }
   };
   const release = async () => {
     if (await lockState() !== 'locked') throw new Error('No confirmed session lock');

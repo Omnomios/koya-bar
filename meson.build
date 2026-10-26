@@ -13,7 +13,7 @@ bash = find_program('bash')
 koya = find_program('koya', required: false)
 if koya.found()
   test('models', bash, args: files('tests/models.sh'), timeout: 60)
-  test('fingerprint-native', bash, args: files('tests/fingerprint-native.sh'), depends: [fingerprint_module, fingerprint_helper], timeout: 40)
+  test('fingerprint-pam', bash, args: files('tests/fingerprint-pam.sh'), timeout: 45)
 endif
 python = find_program('python3', required: false)
 if python.found()

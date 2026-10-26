@@ -12,6 +12,7 @@ import { test as test8 } from './session-actions.js';
 import { test as test9 } from './displays.js';
 import { test as fingerprintTest } from './fingerprint.js';
 import { test as sessionStateTest } from './session-state.js';
+import { test as fingerprintPamTest } from './fingerprint-pam.js';
 import { test as frameworkTest } from './framework.js';
 import { test as chargeControlTest } from './charge-control.js';
 export default function main() {
@@ -28,6 +29,7 @@ export default function main() {
       await test8();
       await test9();
       await fingerprintTest();
+      await fingerprintPamTest();
       await sessionStateTest();
       await chargeControlTest();
       await frameworkTest();

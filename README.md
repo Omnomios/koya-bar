@@ -456,6 +456,10 @@ for enrollment and removal using fprintd, fingerprint unlock with a separate
 password fallback, and display of fingerprint PAM prompts in the login greeter.
 Fingerprint records stay in fprintd; Koya does not store biometric data.
 
+Lock fingerprint authentication uses `Module/pam`'s cancellable `begin()` API
+(helix-plugins 0.7.1 build 921 or newer). PAM owns its embedded authentication
+worker; Koya translates its messages and outcomes for the lock UI.
+
 On Arch, install `fprintd`, build the native modules, and run `./account.sh` from
 this checkout to enroll a finger. Enrollment does not require a PAM change.
 Enable lock authentication and optional greetd fingerprint login with:
@@ -501,6 +505,18 @@ Run the fingerprint D-Bus contract against a private fixture (requires
 ```bash
 bash tests/fingerprint-dbus.sh
 ```
+
+Test the installed PAM plugin and Koya's fingerprint adapter with isolated
+fixture credentials and no system PAM changes:
+
+```bash
+bash tests/fingerprint-pam.sh
+```
+
+This runs the real plugin and its embedded worker with a test-only PAM backend.
+It covers live messages, refusals, account checks, unexpected password prompts,
+timeout, cancellation races and password handoff. The test skips when sandbox
+restrictions prevent private socket IPC; run it in a normal terminal then.
 
 ## Develop and test
 
