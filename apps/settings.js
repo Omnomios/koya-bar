@@ -23,6 +23,7 @@ export default async () => {
   hardware = hardwareSettings(frame, System, () => state || {}, () => {
     const shape = JSON.stringify(hardware.capabilities);
     if (shape !== hardwareShape) { hardwareShape = shape; if (frame.current?.hardwareHome) go('home', 0, false); }
+    else if (frame.current?.hardwareHome) frame.enqueue(() => frame.current?.updateHardware?.());
   });
   const save = async (key, value) => {
     if (!state || pending.has(key)) return;
@@ -60,14 +61,16 @@ export default async () => {
       UI.setElementId(frame.win, displaysItem.target, 'settings-displays')]);
     page.items.push(item.target, skinItem.target, clockItem.target, updatesItem.target, displaysItem.target);
     const capabilityRows = [];
-    for (const [kind, title, detail] of [['cooling', 'Cooling', 'Temperatures and fan control'], ['lighting', 'Keyboard & lighting', 'Keyboard and power button brightness']].filter(([kind]) => hardware.capabilities[kind])) {
-      const row = await frame.navigate(null, title, detail, LIST_ROW_HEIGHT, () => go(kind, 1));
+    for (const [kind, title] of [['cooling', 'Cooling'], ['lighting', 'Keyboard & lighting']].filter(([kind]) => hardware.capabilities[kind])) {
+      const row = await frame.navigate(null, title, hardware.detail(kind), LIST_ROW_HEIGHT, () => go(kind, 1));
       await UI.setElementId(frame.win, row.target, 'settings-' + kind); await UI.attach(frame.win, page.el, row.target); page.items.push(row.target);
       capabilityRows.push({ ...row, kind });
     }
     const count = 5 + capabilityRows.length;
     page.height = SPACE.xs + LIST_ROW_HEIGHT * count + SPACE.s * (count - 1);
-    page.update = () => Promise.all([UI.setTextString(frame.win, skinItem.valueLabel, skinName(state.Skin)),
+    // Live readings: the hottest sensor and the fan, the keyboard's level.
+    page.updateHardware = () => Promise.all(capabilityRows.map(row => UI.setTextString(frame.win, row.valueLabel, hardware.detail(row.kind))));
+    page.update = () => Promise.all([UI.setTextString(frame.win, skinItem.valueLabel, skinName(state.Skin)), page.updateHardware(),
       UI.setTextString(frame.win, updatesItem.valueLabel, updatesSummary(state))]);
     return page;
   };

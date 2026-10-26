@@ -15,6 +15,7 @@ import { test as sessionStateTest } from './session-state.js';
 import { test as fingerprintPamTest } from './fingerprint-pam.js';
 import { test as frameworkTest } from './framework.js';
 import { test as chargeControlTest } from './charge-control.js';
+import { test as hardwareTest } from './hardware.js';
 export default function main() {
   setTimeout(async () => {
     try {
@@ -33,6 +34,7 @@ export default function main() {
       await sessionStateTest();
       await chargeControlTest();
       await frameworkTest();
+      hardwareTest();
       Log.info('KOYA_MODEL_TEST_PASS');
     } catch (error) { Log.error('KOYA_MODEL_TEST_FAIL: ' + error.stack); }
     finally { Engine.quit(); }

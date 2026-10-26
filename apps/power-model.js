@@ -35,7 +35,7 @@ export function powerView(state = {}) {
           end: percent(item.end) ? item.end : null, adjustable: !!item.adjustable, minimum: item.minimum ?? 25, maximum: item.maximum ?? 100,
           range: limits ? item.start + '–' + item.end + '%' : percent(item.end) ? item.end + '%' : percent(item.start) ? 'From ' + item.start + '%' : '' });
       } else details.push({ key: prefix + 'Limits', value: !item.thresholdEnabled ? 'Off' : limits ? item.start + '–' + item.end + '%' : 'Enabled' });
-    }
+    } else if (item.chargeIssue) details.push({ key: prefix + 'Charge limit', value: item.chargeIssue === 'conflict' ? 'Set by another tool' : 'Unavailable' });
   }
   const profiles = Object.keys(PROFILE_LABELS).filter(profile => array(state.PowerProfiles).includes(profile));
   const degraded = ({ 'lap-detected': 'Performance limited while on your lap', 'high-operating-temperature': 'Performance limited by temperature' })[state.PowerProfileDegraded]

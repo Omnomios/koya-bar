@@ -26,9 +26,11 @@ export function createChargeControls(backends) {
               start: value.start ?? -1, end: value.end, chargeBackend: backend.id, adjustable: !!value.adjustable,
               minimum: value.minimum ?? 25, maximum: value.maximum ?? 100 });
             owners.set(device.path, { backend, device });
-          } catch (_) {
-            // Keep telemetry available; do not advertise a stale control.
+          } catch (error) {
+            // Keep telemetry available; do not advertise a stale control,
+            // but say why it is missing.
             item.chargeBackend = backend.id;
+            item.chargeIssue = /another/i.test(String(error?.message)) ? 'conflict' : 'unavailable';
           }
           break;
         }
