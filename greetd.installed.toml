@@ -3,7 +3,7 @@ vt = 1
 switch = true
 
 [default_session]
-command = "/usr/local/bin/koya-greeter --raw-tty /dev/tty1"
+command = "/usr/bin/systemd-cat --identifier=koya-greeter -- /usr/local/bin/koya-greeter --raw-tty /dev/tty1"
 # Direct DRM/input/VT access currently requires root for the greeter.
 # greetd starts authenticated desktop sessions as their respective users.
 user = "root"

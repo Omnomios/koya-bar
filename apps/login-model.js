@@ -22,7 +22,10 @@ export function createLoginController({ request, onState = () => {}, onStarted }
       }
       if (reply?.type === 'success') {
         state.phase = 'starting'; state.message = 'Starting ' + session.name + '…'; await notify();
-        const result = await send({ type: 'start_session', cmd: session.cmd, env: session.env });
+        // greetd connects the session's output to its VT. Keep compositor and
+        // desktop logs in the journal during the graphical handoff.
+        const cmd = ['/usr/bin/systemd-cat', '--identifier=koya-session', '--', ...session.cmd];
+        const result = await send({ type: 'start_session', cmd, env: session.env });
         if (result?.type !== 'success') throw new Error(result?.description || 'Could not start the session.');
         authenticating = false; state.phase = 'started';
         // greetd waits for the greeter to exit. Release raw output before quit.

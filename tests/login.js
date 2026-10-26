@@ -26,7 +26,9 @@ await controller.respond('alice');
 assert.equal(controller.state.secret, true, 'A later secret prompt restores masking');
 assert.equal(handoff.length, 0, 'Additional PAM prompts never start a session early');
 await controller.respond('123456');
-assert.deepEqual(requests.at(-1), { type: 'start_session', cmd: session.cmd, env: session.env });
+assert.deepEqual(requests.at(-1), { type: 'start_session',
+  cmd: ['/usr/bin/systemd-cat', '--identifier=koya-session', '--', ...session.cmd], env: session.env },
+  'Session output goes to the journal while preserving the selected command and environment');
 assert.equal(controller.state.phase, 'started');
 assert.deepEqual(handoff, ['released and exited']);
 assert(!JSON.stringify(states).includes('fixture-password'), 'Credentials never enter display state');
@@ -67,7 +69,8 @@ onStarted: async () => {} });
 await switching.begin('alice', session);
 assert.equal(switching.chooseSession(other), true, 'The session can change while answering');
 await switching.respond('secret');
-assert.deepEqual(chosen.at(-1).cmd, ['labwc'], 'The session chosen last is started');
+assert.deepEqual(chosen.at(-1).cmd, ['/usr/bin/systemd-cat', '--identifier=koya-session', '--', 'labwc'],
+  'The session chosen last is started with journal output');
 assert.equal(switching.chooseSession(session), false, 'A started session cannot change');
 
 const cancelRequests = [];

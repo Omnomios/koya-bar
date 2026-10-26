@@ -5,7 +5,7 @@ if (( EUID != 0 )); then
   printf 'Run with sudo: sudo ./install-greeter.sh\n' >&2
   exit 1
 fi
-for required in /usr/bin/koya /usr/bin/greetd \
+for required in /usr/bin/koya /usr/bin/greetd /usr/bin/systemd-cat \
   /usr/lib/libhx-dbus.so \
   /usr/share/koya/assets/std/koya-controls.js \
   "$root/build/native/modules/libhx-login.so" \

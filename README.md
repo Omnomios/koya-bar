@@ -355,6 +355,9 @@ the desktop as the authenticated user. Escape or Back cancels authentication;
 secret prompts stay masked. The last account and its opted-in wallpaper are
 recalled, and AccountsService supplies its last selected session.
 
+Greeter and desktop session output goes to the journal, keeping startup text
+off the VT. Read it with `journalctl -b -t koya-greeter -t koya-session`.
+
 The Account app's **Automatic** switch uses polkit to record automatic login
 in `/etc/koya-greeter/autologin`. The installed greetd wrapper builds its runtime
 configuration under `/run/koya-greeter/` and adds an initial session for that
