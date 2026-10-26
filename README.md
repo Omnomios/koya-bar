@@ -561,3 +561,23 @@ does not unlock LUKS or change boot configuration. Its demo password is `koya`.
 Project material is released under Creative Commons Attribution 4.0
 International; see [LICENSE](LICENSE) and [NOTICE](NOTICE). The bundled Inter
 fonts and QuickJS header retain their original licences.
+
+### Framework hardware controls
+
+The optional sibling project `../framework-dbus` supplies Framework charge,
+cooling and lighting controls over the system bus. Install its package or
+follow its README. No additional Koya native plugin or Framework CLI is needed.
+The power popup gains an adjustable charge ceiling; Settings adds Cooling and
+Keyboard & lighting when the service reports supported hardware. UPower still
+supplies battery telemetry and charge controls on other devices.
+
+Fan overrides last only while Cooling remains open in the active unlocked
+session. Closing the page returns the fans to automatic control. Charge and
+lighting persistence follows the firmware; Koya remembers the last chosen
+charge ceiling for the enable switch without applying it at login.
+
+Run the JS model tests with `bash tests/models.sh`. For the actual native D-Bus
+client against simulated hardware, build the sibling project and run
+`bash tests/framework-dbus.sh` from a normal terminal. That test creates a
+private session bus and never writes to the real EC. Hardware acceptance steps
+are in `../framework-dbus/docs/hardware-testing.md`.

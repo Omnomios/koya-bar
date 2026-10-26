@@ -6,7 +6,7 @@ export const shellStatePayload = state => Object.fromEntries(Object.entries(stat
   [key, typeof value === 'number' && (!Number.isInteger(value) || value < -2147483648 || value > 2147483647)
     ? { _t: 'd', _v: value } : value]));
 
-export function createShellService({ applications, stored, persist, openBuiltin, setPowerProfile, setChargeControl, setCaffeine, updates, sessionActions, displays, changed = () => {} }) {
+export function createShellService({ applications, stored, persist, openBuiltin, setPowerProfile, setChargeControl, setChargeLimit, setCaffeine, updates, sessionActions, displays, changed = () => {} }) {
   let settings = readSettings(stored), saving = Promise.resolve();
   let state = { Active: true, ScreenState: 'unlocked', PowerMenuState: 'closed', CaffeineActive: false, CaffeinePending: false, CaffeineError: '' };
   const snapshot = () => ({ ...state, ...settings });
@@ -46,6 +46,14 @@ export function createShellService({ applications, stored, persist, openBuiltin,
         if (typeof args[0] !== 'boolean') throw new Error('Caffeine expects a boolean');
         if (!setCaffeine || (args[0] && (!state.Active || state.ScreenState !== 'unlocked'))) throw new Error('Caffeine requires an active unlocked session');
         await setCaffeine(args[0]); return snapshot();
+      case 'SetChargeLimit': {
+        if (!state.Active || state.ScreenState !== 'unlocked' || !setChargeLimit) throw new Error('Charge control change is unavailable');
+        const [path, limit] = args;
+        if (typeof path !== 'string' || !Number.isInteger(limit) || limit < 25 || limit > 100) throw new Error('Invalid charge limit');
+        await setChargeLimit(path, limit);
+        if (limit < 100) await this.request('SetSetting', ['FrameworkChargeLimit', String(limit)]);
+        return snapshot();
+      }
       case 'SetChargeControl':
         if (!state.Active || state.ScreenState !== 'unlocked' || !setChargeControl) throw new Error('Charge control change is unavailable');
         if (typeof args[0] !== 'string' || typeof args[1] !== 'boolean') throw new Error('Invalid charge control arguments');

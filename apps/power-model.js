@@ -32,7 +32,7 @@ export function powerView(state = {}) {
       const limits = [item.start, item.end].every(percent) && item.start < item.end;
       if (typeof item.path === 'string' && item.path.startsWith('/')) {
         chargeControls.push({ path: item.path, title: prefix + 'Charge limit', enabled: !!item.thresholdEnabled,
-          end: percent(item.end) ? item.end : null,
+          end: percent(item.end) ? item.end : null, adjustable: !!item.adjustable, minimum: item.minimum ?? 25, maximum: item.maximum ?? 100,
           range: limits ? item.start + '–' + item.end + '%' : percent(item.end) ? item.end + '%' : percent(item.start) ? 'From ' + item.start + '%' : '' });
       } else details.push({ key: prefix + 'Limits', value: !item.thresholdEnabled ? 'Off' : limits ? item.start + '–' + item.end + '%' : 'Enabled' });
     }

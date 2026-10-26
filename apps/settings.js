@@ -1,3 +1,5 @@
+import { system as System } from 'Module/dbus';
+import { hardwareSettings } from './hardware-settings.js';
 import * as UI from './theme-ui.js';
 import * as Log from 'Helix/Log';
 import { connect, call } from './session.js';
@@ -13,11 +15,15 @@ import { UPDATE_INTERVALS, intervalLabel } from './updates-model.js';
 import { CLEAR, GUTTER, SPACE, TYPE, RADIUS, LIST_ROW_HEIGHT, TEXT, SURFACE, BORDER, configureTheme } from './theme.js';
 
 export default async () => {
-  let state, author;
+  let state, author, hardware, hardwareShape = '';
   const pending = new Set();
   const frame = await appFrame({ title: 'Settings', namespace: 'koya-settings',
-    hint: () => state ? '' : 'Connecting to the shell…', onBack: () => frame.current?.themeRoute ? author.back()
+    hint: () => state ? '' : 'Connecting to the shell…', onClose: () => hardware?.dispose(), onBack: () => frame.current?.themeRoute ? author.back()
       : go(frame.current?.intervalPage ? 'updates' : 'home', -1) });
+  hardware = hardwareSettings(frame, System, () => state || {}, () => {
+    const shape = JSON.stringify(hardware.capabilities);
+    if (shape !== hardwareShape) { hardwareShape = shape; if (frame.current?.hardwareHome) go('home', 0, false); }
+  });
   const save = async (key, value) => {
     if (!state || pending.has(key)) return;
     pending.add(key);
@@ -34,7 +40,7 @@ export default async () => {
   const updatesSummary = value => value.UpdatesError ? 'Check failed' : value.UpdatesCount > 0
     ? value.UpdatesCount + (value.UpdatesCount === 1 ? ' update' : ' updates') : value.UpdatesCheckedAt ? 'Up to date' : 'Not checked';
   const home = async () => {
-    const page = await frame.newPage();
+    const page = await frame.newPage(); page.hardwareHome = true;
     const clock = clockPreferences(state);
     const [item, skinItem, clockItem, updatesItem, displaysItem] = await Promise.all([
       frame.navigate(null, 'Wallpaper', wallpaperFor(state.Wallpaper).name, LIST_ROW_HEIGHT, () => go('wallpaper', 1)),
@@ -53,7 +59,14 @@ export default async () => {
       UI.setElementId(frame.win, clockItem.target, 'settings-clock'), UI.setElementId(frame.win, updatesItem.target, 'settings-updates'),
       UI.setElementId(frame.win, displaysItem.target, 'settings-displays')]);
     page.items.push(item.target, skinItem.target, clockItem.target, updatesItem.target, displaysItem.target);
-    page.height = SPACE.xs + LIST_ROW_HEIGHT * 5 + SPACE.s * 4;
+    const capabilityRows = [];
+    for (const [kind, title, detail] of [['cooling', 'Cooling', 'Temperatures and fan control'], ['lighting', 'Keyboard & lighting', 'Keyboard and power button brightness']].filter(([kind]) => hardware.capabilities[kind])) {
+      const row = await frame.navigate(null, title, detail, LIST_ROW_HEIGHT, () => go(kind, 1));
+      await UI.setElementId(frame.win, row.target, 'settings-' + kind); await UI.attach(frame.win, page.el, row.target); page.items.push(row.target);
+      capabilityRows.push({ ...row, kind });
+    }
+    const count = 5 + capabilityRows.length;
+    page.height = SPACE.xs + LIST_ROW_HEIGHT * count + SPACE.s * (count - 1);
     page.update = () => Promise.all([UI.setTextString(frame.win, skinItem.valueLabel, skinName(state.Skin)),
       UI.setTextString(frame.win, updatesItem.valueLabel, updatesSummary(state))]);
     return page;
@@ -256,16 +269,17 @@ export default async () => {
     finally { busy = false; }
   };
   const go = (next, direction, animate = true) => {
-    return frame.go(({ home, wallpaper: wallpapers, skin: skins, clock, updates, updateInterval })[next],
-      { title: ({ home: 'Settings', wallpaper: 'Wallpaper', skin: 'Theme', clock: 'Date & time', updates: 'OS updates', updateInterval: 'Check interval' })[next],
+    return frame.go(({ home, wallpaper: wallpapers, skin: skins, clock, updates, updateInterval, cooling: hardware.cooling, lighting: hardware.lighting })[next],
+      { title: ({ home: 'Settings', wallpaper: 'Wallpaper', skin: 'Theme', clock: 'Date & time', updates: 'OS updates', updateInterval: 'Check interval', cooling: 'Cooling', lighting: 'Keyboard & lighting' })[next],
         direction, back: next !== 'home', animate });
   };
   connect('settings', async value => {
     const initial = !state; state = value;
-    author?.receive(state.Skin);
+    author?.receive(state.Skin); await hardware.onSession();
     if (initial) { await loadUserWallpapers(); await go('home', 0); }
     else await Promise.all([frame.current?.update(), frame.refreshHint()]);
   });
+  hardware.start().catch(error => Log.error('Hardware settings: ' + error));
   globalThis.koyaSettings = { go, addImage };
   return frame;
 };

@@ -1,6 +1,7 @@
 import * as UI from './theme-ui.js';
 import * as Log from 'Helix/Log';
 import { createPopover } from './popover.js';
+import { scalarControl } from './scalar-control.js';
 import { powerView } from './power-model.js';
 import { PROFILE_LABELS } from './power-profiles.js';
 import { call } from './session.js';
@@ -15,7 +16,7 @@ const MODES_HEIGHT = 60, CHARGE_ROW_HEIGHT = 44, CHARGE_RANGE_WIDTH = 64, CHARGE
 // for this long, then the control reads normally again.
 const ERROR_MS = 2400;
 const texture = name => '/rom/assets/status/' + name + '.png';
-const shape = view => JSON.stringify([view.details.map(row => row.key), view.chargeControls.map(control => control.path),
+const shape = view => JSON.stringify([view.details.map(row => row.key), view.chargeControls.map(control => [control.path, control.adjustable]),
   view.profiles, !!view.degraded, view.percent === null]);
 // The meter reads like the status line: what the battery is doing, then the level.
 const reading = view => (view.charging ? 'Charging · ' : '') + Math.round(view.percent) + '%';
@@ -33,7 +34,7 @@ export function createPowerPopup() {
   };
   const destroy = async () => {
     if (!popup) return;
-    const old = popup; popup = undefined; old.details.dispose(); await old.shell.destroy();
+    const old = popup; popup = undefined; old.details.dispose(); old.chargeControls.forEach(control => control.slider?.dispose()); await old.shell.destroy();
   };
   const close = () => { request++; placement = undefined; clearTimeout(errorTimer); error = chargeError = ''; return enqueue(destroy); };
   const fail = target => {
@@ -60,19 +61,20 @@ export function createPowerPopup() {
       if (!disposed) await enqueue(paint);
     }
   };
-  const changeChargeControl = async path => {
+  const changeChargeControl = async (path, limit) => {
     const control = powerView(state).chargeControls.find(item => item.path === path);
     if (busy || disposed || !placement || !state.Active || state.ScreenState !== 'unlocked' || !control) return;
-    busy = true; chargePath = path; chargeTarget = !control.enabled; chargeError = '';
+    busy = true; chargePath = path; chargeTarget = limit === undefined ? !control.enabled : limit < 100; chargeError = '';
     try {
       await enqueue(paint);
-      const value = await call('SetChargeControl', 'sb', path, !control.enabled);
+      const value = limit === undefined ? await call('SetChargeControl', 'sb', path, !control.enabled) : await call('SetChargeLimit', 'su', path, limit);
       if (!disposed) state = value;
     } catch (reason) {
       chargeError = /denied|authorized|permission|polkit/i.test(String(reason)) ? 'Denied' : 'Failed';
       chargeErrorPath = path;
       Log.error('Charge control: ' + reason);
       fail(popup?.chargeControls.find(item => item.path === path)?.id);
+      if (limit !== undefined) throw reason;
     } finally {
       busy = false; chargePath = '';
       if (!disposed) await enqueue(paint);
@@ -117,6 +119,8 @@ export function createPowerPopup() {
       // One line per limit-capable battery: name, a throbber while applying,
       // the range (or a failure) and the switch.
       const chargeControls = await Promise.all(view.chargeControls.map(async control => {
+        const height = CHARGE_ROW_HEIGHT + (control.adjustable ? 44 : 0);
+        const group = await UI.createElement(win, { layout: { type: 'column' }, item: { size: { x: shell.inner, y: height } } });
         const card = await kit.surface('inset', { size: { x: 'auto', y: CHARGE_ROW_HEIGHT },
           layout: { type: 'row', gap: SPACE.s }, padding: { t: 0, r: SPACE.xs, b: 0, l: SPACE.m } });
         const width = shell.inner - SPACE.m - SPACE.xs - CHARGE_RANGE_WIDTH - SPINNER - CHARGE_SWITCH_WIDTH - SPACE.s * 3;
@@ -131,7 +135,12 @@ export function createPowerPopup() {
         await Promise.all([UI.attach(win, card.content, title), UI.attach(win, card.content, spinner.id), UI.attach(win, card.content, range),
           UI.attach(win, card.content, switchControl.id), UI.setElementId(win, switchControl.id, 'power-charge-' + control.path.split('/').pop()),
           UI.setElementId(win, range, 'power-charge-range-' + control.path.split('/').pop())]);
-        return { id: card.id, height: CHARGE_ROW_HEIGHT, path: control.path, title, range, spinner, switchControl };
+        await UI.attach(win, group, card.id);
+        const slider = control.adjustable ? await scalarControl(win, { id: 'power-charge-limit-' + control.path.split('/').pop(), width: shell.inner,
+          value: control.enabled ? control.end : state.FrameworkChargeLimit || 80, minimum: control.minimum, maximum: control.maximum,
+          available: () => !busy && state.Active && state.ScreenState === 'unlocked', commit: value => changeChargeControl(control.path, value) }) : undefined;
+        if (slider) await UI.attach(win, group, slider.id);
+        return { id: group, height, path: control.path, title, range, spinner, switchControl, slider };
       }));
       const limitation = view.degraded ? await text(win, null, view.degraded, TYPE.caption, shell.inner, 20, TEXT.secondary, FONT, 'left') : undefined;
       const sections = [{ id: hero, height: KIT_METRICS.badgeSlotSize }, ...(meter ? [meter] : []), details,
@@ -184,7 +193,7 @@ export function createPowerPopup() {
       ...popup.chargeControls.flatMap(control => {
         const current = view.chargeControls.find(item => item.path === control.path);
         const applying = chargePath === control.path, failed = chargeError && chargeErrorPath === control.path;
-        return [control.switchControl.set(applying ? chargeTarget : current.enabled), UI.setHitTarget(win, control.switchControl.id, !busy),
+        return [...(control.slider ? [control.slider.set(current.enabled ? current.end : state.FrameworkChargeLimit || 80)] : []), control.switchControl.set(applying ? chargeTarget : current.enabled), UI.setHitTarget(win, control.switchControl.id, !busy),
           UI.setTextString(win, control.title, current.title), UI.setTextString(win, control.range, failed ? chargeError : current.range),
           UI.setTextColour(win, control.range, failed ? TEXT.accent : TEXT.secondary),
           applying ? control.spinner.start() : control.spinner.stop()];
