@@ -91,8 +91,8 @@ async function openWindow(surface) {
 export async function createGreeter({ preview = false, surface = 'raw' } = {}) {
   const sessions = Login.sessions().sort((a, b) => (a.id !== 'hyprland.desktop') - (b.id !== 'hyprland.desktop') || a.name.localeCompare(b.name));
   if (preview && !sessions.length) sessions.push({ id: 'preview', name: 'Hyprland', cmd: ['Hyprland'], env: [] });
-  // The last account to sign in is asked for again straight away, over its
-  // wallpaper if it chose to show it.
+  // Prefill the last account and its wallpaper. Authentication begins when
+  // the person submits the account, leaving PAM idle until then.
   const returning = lastUser();
   let shownWallpaper = await accountWallpaper(returning) || systemWallpaper();
   await configureWallpaper({ Wallpaper: shownWallpaper });
@@ -314,7 +314,6 @@ export async function createGreeter({ preview = false, surface = 'raw' } = {}) {
     await render(controller.state);
     if (returning && sessions.length) {
       await Promise.all([user.setValue(returning), setAvatar(returning), recallSession(returning)]);
-      await controller.begin(returning, sessions[selected]);
     }
     return { win, dispose };
   } catch (error) { await dispose(); throw error; }
