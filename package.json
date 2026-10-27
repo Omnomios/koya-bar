@@ -5,6 +5,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --experimental-vm-modules tests/greeter-startup.mjs && bash tests/models.sh"
+    "test": "node tests/fingerprint-wake.mjs && node tests/lock-display-power.mjs && node --experimental-vm-modules tests/greeter-startup.mjs && bash tests/models.sh"
   }
 }

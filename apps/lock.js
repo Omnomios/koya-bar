@@ -6,6 +6,8 @@ import * as Desktop from 'Module/desktop';
 import * as Process from 'Module/process';
 import * as PAM from 'Module/pam';
 import { createFingerprintAuth } from './fingerprint-auth.js';
+import { wakeHyprland } from './fingerprint-wake.js';
+import { createLockDisplayPower, readHyprlandMonitors } from './lock-display-power.js';
 import { system } from 'Module/dbus';
 import * as Log from 'Helix/Log';
 import { createLockController } from './lock-model.js';
@@ -51,6 +53,10 @@ async function build() {
   await configureWallpaper(settings);
   let clockSettings = clockPreferences(settings);
   const screens = new Map();
+  const displayPower = createLockDisplayPower({
+    readMonitors: () => readHyprlandMonitors(Process.spawn),
+    setRendering: (win, enabled) => Compositor.setWindowRenderingEnabled(win, enabled)
+  });
   let password = '', confirmed = false, fingerprintReady = false;
   let notice = { text: '', tone: 'info' }, holdUntil = 0, held, holdTimer;
   let sensor = { phase: 'hidden' }, countdown;
@@ -116,7 +122,12 @@ async function build() {
   };
   const controller = createLockController({ authenticate: answer => PAM.authenticate({ service, user, password: answer }),
     fingerprint,
-    lockState: () => Compositor.sessionLockState(), unlock: () => Compositor.unlockSession(), onStatus: setStatus, onSensor: setSensor });
+    lockState: () => Compositor.sessionLockState(), unlock: () => Compositor.unlockSession(),
+    wakeDisplay: async () => {
+      try { await wakeHyprland(Process.spawn); await displayPower.resume(); }
+      catch (error) { Log.error(String(error)); }
+    },
+    onStatus: setStatus, onSensor: setSensor });
   const updateInput = source => Promise.all([...screens.values()].filter(screen => screen.input !== source).map(screen => screen.input.setValue(password)));
   const updateAvailability = () => Promise.all([...screens.values()].map(async screen => {
     const disabled = !confirmed || controller.busy || controller.unlocked;
@@ -210,6 +221,7 @@ async function build() {
     screen.input = input; screen.status = status; screen.avatar = avatar; screen.feedback = feedback; screen.sensor = sensorParts;
     screen.play(sensorParts.ring, [{ time: 0, opacity: 0 }]); screen.play(sensorParts.count, [{ time: 0, opacity: 0 }]);
     screens.set(display.display, screen);
+    displayPower.add(display.display, win);
     // A display that arrives later starts in the current state.
     await Promise.all([showStatus(screen, false), showSensor(screen, null)]);
     avatar.setUser(user);
@@ -219,7 +231,7 @@ async function build() {
   const sync = async () => {
     const displays = await Compositor.listDisplays({ backend: 'wayland' }), names = new Set(displays.map(item => item.display));
     for (const [name, screen] of screens) if (!names.has(name)) {
-      screen.stop(); screens.delete(name); await Promise.all([screen.input.destroy(), screen.avatar.dispose()]); await destroySurface(screen.win);
+      screen.stop(); screens.delete(name); displayPower.remove(name); await Promise.all([screen.input.destroy(), screen.avatar.dispose()]); await destroySurface(screen.win);
     }
     for (const display of displays) if (!screens.has(display.display)) await add(display);
   };
@@ -236,6 +248,7 @@ async function build() {
     await new Promise(resolve => setTimeout(resolve, 50));
   }
   if (!confirmed) throw new Error('The compositor did not confirm the lock');
+  await displayPower.refresh().catch(error => Log.error('Lock display power: ' + error));
   await setLockedHint(true).catch(error => Log.error('Lock session state: ' + error));
   await updateAvailability();
   if (fingerprint.available()) {
@@ -257,7 +270,8 @@ async function build() {
       await configureTheme(settings);
       clockSettings = clockPreferences(settings);
       await sync();
-      await paintClock();
+      await displayPower.refresh().catch(error => Log.error('Lock display power: ' + error));
+      if (!displayPower.allOff) await paintClock();
     } catch (_) { Log.error('Lock screen could not update'); }
     finally { updating = false; }
   }, 1000);

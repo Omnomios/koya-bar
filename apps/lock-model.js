@@ -4,12 +4,13 @@
 // (for example translated) messages pass through unchanged.
 export const SENSOR_PROMPT = 'Touch the sensor';
 const sensorMessages = [
+  [/timed out/i, null, SENSOR_PROMPT],
   [/failed to match|no match/i, 'mismatch', 'Not recognised'],
   [/too short/i, 'adjust', 'Swipe the whole sensor'],
   [/not cent(ered|red)/i, 'adjust', 'Centre your finger'],
   [/remove your finger/i, 'adjust', 'Lift, then touch again'],
   [/\bagain\b/i, 'adjust', 'Try again'],
-  [/^(place|swipe|touch|put) your|timed out|unknown error|disconnected/i, null, SENSOR_PROMPT]
+  [/^(place|swipe|touch|put) your|unknown error|disconnected/i, null, SENSOR_PROMPT]
 ];
 export function sensorMessage(message) {
   const text = String(message).trim();
@@ -21,7 +22,7 @@ export function sensorMessage(message) {
 // onSensor(phase, detail) drives the fingerprint badge: the phases
 // 'listening', 'paused', 'resting' ({ resumeAt }), 'unavailable' and
 // 'matched' persist; 'mismatch' and 'adjust' are reactions while listening.
-export function createLockController({ authenticate, fingerprint, unlock, lockState, onStatus = () => {}, onSensor = () => {}, now = () => Date.now() }) {
+export function createLockController({ authenticate, fingerprint, unlock, lockState, wakeDisplay = () => {}, onStatus = () => {}, onSensor = () => {}, now = () => Date.now() }) {
   let busy = false, failures = 0, retryAt = 0, unlocked = false;
   let fingerprintBusy = false, generation = 0, verification, fingerprintRetry = 0, watchGeneration = 0, fingerprintLimited = false;
   const cancelFingerprint = async () => {
@@ -63,18 +64,27 @@ export function createLockController({ authenticate, fingerprint, unlock, lockSt
       if (!fingerprint || busy || fingerprintBusy || unlocked) return false;
       const token = ++generation;
       fingerprintBusy = true; fingerprintRetry = 0; fingerprintLimited = false;
+      let wake;
+      const wakeCurrent = () => Promise.resolve().then(() => {
+        if (token === generation && !busy && !unlocked) return wakeDisplay();
+      }).catch(() => {});
+      const wakeOnce = () => { if (!wake) wake = wakeCurrent(); return wake; };
       try {
         if (await lockState() !== 'locked' || token !== generation || busy) return false;
         onSensor('listening'); onStatus(SENSOR_PROMPT);
-        verification = Promise.resolve(fingerprint.verify(message => {
+        verification = Promise.resolve(fingerprint.verify((message, type) => {
           if (token !== generation || busy || unlocked || typeof message !== 'string') return;
           const { reaction, text } = sensorMessage(message);
+          if (reaction || type === 'error' && !/timed out/i.test(message)) wakeOnce();
           if (reaction) onSensor(reaction);
           onStatus(text, reaction === 'mismatch' ? 'error' : 'info');
           // An error lingers, then the prompt returns: PAM is still listening.
           if (reaction === 'mismatch') onStatus(SENSOR_PROMPT);
         }));
         const result = await verification;
+        if (token !== generation || busy || unlocked) return false;
+        if (result?.ok === true) await wakeCurrent();
+        else if (!result?.cancelled && !result?.timedOut && result?.reason !== 'configuration') await wakeOnce();
         if (token !== generation || busy || unlocked) return false;
         if (result?.ok !== true) {
           if (result?.cancelled) return false;
