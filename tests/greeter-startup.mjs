@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { setTimeout as delay } from 'node:timers/promises';
 import { SourceTextModule, SyntheticModule } from 'node:vm';
 import { createLoginController } from '../apps/login-model.js';
 
@@ -8,8 +9,9 @@ import { createLoginController } from '../apps/login-model.js';
 // observable so this covers createGreeter's startup and submit wiring.
 let nextId = 0;
 const id = () => `element-${++nextId}`;
-const controls = new Map(), names = new Map(), inputs = new Map(), requests = [], sessionsSeen = [], wallpapersSeen = [];
+const controls = new Map(), names = new Map(), labels = new Map(), inputs = new Map(), requests = [], sessionsSeen = [], wallpapersSeen = [];
 let remembered = 'alice';
+let refuseAnswer = false;
 const input = options => {
   let value = '';
   const field = {
@@ -24,7 +26,7 @@ const input = options => {
 const ui = {
   createElement: async () => ({ id: id() }),
   setElementId: async (win, element, name) => { names.set(name, element); },
-  setTextString: async () => {}, setTextColour: async () => {},
+  setTextString: async (win, element, value) => { labels.set(element, value); }, setTextColour: async () => {},
   setEnabled: async () => {}, setHitTarget: async () => {},
   setLayoutOrder: async () => {}, attach: async () => {},
   setMargin: async () => {}, setLayoutAABB: async () => {},
@@ -47,7 +49,9 @@ const modules = {
       const request = JSON.parse(text); requests.push(request);
       return request.type === 'create_session'
         ? { type: 'auth_message', auth_message_type: 'secret', auth_message: 'Password:' }
-        : { type: 'success' };
+        : request.type === 'post_auth_message_response' && refuseAnswer
+          ? { type: 'error', error_type: 'auth_error' }
+          : { type: 'success' };
     }
   },
   'Helix/Engine': { quit: () => {} }, 'Helix/Event': { on: () => {}, off: () => {} },
@@ -113,8 +117,25 @@ assert.deepEqual(requests.at(-2), { type: 'post_auth_message_response', response
 assert.deepEqual(requests.at(-1), { type: 'start_session', cmd: ['labwc'], env: [] }, 'recalled session starts after the password prompt');
 await instance.dispose();
 
+// A refused prompted conversation must wait for another deliberate Continue.
+requests.length = 0; refuseAnswer = true;
+const refused = await greeter.namespace.createGreeter();
+await controls.get(names.get('greeter-submit'))();
+await inputs.get('greeter-answer').setValue('timed-out-fingerprint');
+await controls.get(names.get('greeter-submit'))();
+await delay(0); // Let a scheduled retry run before checking for another session.
+assert.equal(requests.filter(request => request.type === 'create_session').length, 1,
+  'auth_error must not start another PAM session until Continue');
+assert.equal(labels.get(names.get('greeter-status')), 'Authentication failed. Try again.',
+  'auth_error remains visible while waiting for Continue');
+assert.equal(inputs.get('greeter-user').getValue(), 'alice', 'refusal keeps the account populated');
+await controls.get(names.get('greeter-submit'))();
+assert.deepEqual(requests.at(-1), { type: 'create_session', username: 'alice' },
+  'Continue starts a fresh conversation for the prefilled account');
+await refused.dispose();
+
 // Without a remembered account, the same Continue path accepts a typed name.
-remembered = ''; requests.length = 0; sessionsSeen.length = 0;
+remembered = ''; requests.length = 0; sessionsSeen.length = 0; refuseAnswer = false;
 const manual = await greeter.namespace.createGreeter();
 assert.deepEqual(requests, [], 'manual sign-in also starts idle');
 assert.equal(wallpapersSeen.at(-1), 'default', 'manual sign-in starts with the system wallpaper');
@@ -123,4 +144,4 @@ await controls.get(names.get('greeter-submit'))();
 assert.deepEqual(requests, [{ type: 'create_session', username: 'bob' }]);
 assert.deepEqual(sessionsSeen, ['bob']);
 await manual.dispose();
-console.log('Greeter startup, recalled session, password and manual sign-in: passed');
+console.log('Greeter startup, refusal, recalled session, password and manual sign-in: passed');

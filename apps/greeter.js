@@ -100,9 +100,6 @@ export async function createGreeter({ preview = false, surface = 'raw' } = {}) {
   let screen, user, answer, avatar, heading, status, actionLabel, feedback, back, chip, chipLabel, list, controller, clockTimer;
   let accountName = '', avatarUser = '';
   let selected = 0, closed = false, previewComplete = false, promptKey = '', phase = '', listOpen = false, shownStatus = '';
-  // A refused answer starts a fresh conversation for the same account, so
-  // the card stays on the answer with the refusal showing.
-  let retrying = false, refusal = '';
   const dispose = async () => {
     if (closed) return;
     closed = true; Event.off('keyDown', key); clearInterval(clockTimer); screen?.stop();
@@ -111,7 +108,7 @@ export async function createGreeter({ preview = false, surface = 'raw' } = {}) {
   };
   const goBack = async () => {
     if (closed || controller.state.busy || previewComplete || controller.state.phase !== 'prompt') return;
-    refusal = ''; await answer.setValue(''); await controller.cancel();
+    await answer.setValue(''); await controller.cancel();
   };
   const key = async event => {
     if (event.id !== win || ![1, 65307].includes(Number(event.key))) return;
@@ -132,15 +129,6 @@ export async function createGreeter({ preview = false, surface = 'raw' } = {}) {
   const setAvatar = name => { avatarUser = name.trim(); avatar.setUser(avatarUser); };
   const render = async state => {
     if (closed) return;
-    if (state.phase === 'username' && state.refused && !retrying && state.username) {
-      retrying = true; refusal = state.message; screen.play(screen.card, presets.shake());
-      setTimeout(() => controller.begin(state.username, sessions[selected]).catch(() => {}), 0);
-      return;
-    }
-    // Hold the answer step while the retry asks again.
-    if (retrying && state.phase === 'username' && (state.busy || !state.error)) return;
-    if (retrying && !state.busy) retrying = false;
-    if (state.phase !== 'prompt' && !retrying) refusal = '';
     const asking = state.phase === 'username', challenge = state.phase === 'prompt';
     const nextPrompt = state.phase + ':' + state.prompt + ':' + state.secret;
     if (nextPrompt !== promptKey) {
@@ -152,12 +140,12 @@ export async function createGreeter({ preview = false, surface = 'raw' } = {}) {
     // PAM said and any prompt other than the password (a verification code).
     const failed = asking && state.error;
     const message = previewComplete ? 'Preview complete' : !sessions.length ? 'No Wayland sessions installed' : failed ? state.message
-      : challenge ? refusal || [state.notice, /^password:?\s*$/i.test(state.prompt) ? '' : state.prompt].filter(Boolean).join(' · ') : '';
+      : challenge ? [state.notice, /^password:?\s*$/i.test(state.prompt) ? '' : state.prompt].filter(Boolean).join(' · ') : '';
     const nextPhase = asking ? 'account' : 'answer';
     await Promise.all([
       user.setDisabled(state.busy || !asking), answer.setDisabled(state.busy || !challenge),
       UI.setTextString(win, heading, asking ? 'Sign in' : avatarUser === state.username ? accountName || state.username : state.username),
-      UI.setTextString(win, status, message), UI.setTextColour(win, status, failed || (challenge && refusal) || !sessions.length ? TEXT.accent : TEXT.secondary),
+      UI.setTextString(win, status, message), UI.setTextColour(win, status, failed || !sessions.length ? TEXT.accent : TEXT.secondary),
       UI.setTextString(win, actionLabel, previewComplete ? 'Restart preview' : asking ? 'Continue' : 'Sign in'),
       UI.setEnabled(win, back, challenge), UI.setHitTarget(win, chip, !state.busy && (asking || challenge)),
       state.busy ? feedback.begin() : feedback.end()
@@ -205,7 +193,6 @@ export async function createGreeter({ preview = false, surface = 'raw' } = {}) {
       return controller.begin(name, sessions[selected]);
     }
     if (controller.state.phase === 'prompt') {
-      refusal = '';
       let value = answer.getValue(); await answer.setValue('');
       const result = controller.respond(value); value = ''; return result;
     }
