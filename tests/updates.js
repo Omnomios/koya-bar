@@ -1,8 +1,10 @@
-import assert from 'node:assert/strict';
+import assert from './assert.js';
+import * as Log from 'Helix/Log';
 import { createUpdates, parseUpdates, updatesIndicator, updateDefaults, advanceProgress, startProgress, completeProgress, progressStep, needsRestart, majorChange } from '../apps/updates-model.js';
 import { settingValue, readSettings } from '../apps/settings-model.js';
 import { createShellService } from '../apps/shell-service.js';
 
+export async function test() {
 const repo = 'linux 6.18-1 -> 6.19-1\n';
 // Includes output captured from the installed yay, which appends package age.
 const aur = 'visual-studio-code-bin 1.139.1-1 -> 1.142.0-1 [3d22h]\ngoogle-chrome 154.0.8037.92-1 -> 155.0.8059.84-1 [1d19h]\n';
@@ -158,7 +160,7 @@ assert.equal(updatesIndicator(service.snapshot()).visible, true);
 service.update({ UpdatesInstalling: true });
 await assert.rejects(service.request('SetSetting', ['UpdatesIncludeAUR', 'false']), /finish/);
 assert.equal(saved.UpdatesIncludeAUR, true);
-console.log('OS update parsing, scheduling, failures, authentication and shell integration: passed');
+Log.info('OS update parsing, scheduling, failures, authentication and shell integration: passed');
 
 // Installation progress from pacman's and yay's plain (non-terminal) output,
 // arriving in arbitrary chunks.
@@ -185,4 +187,6 @@ assert(needsRestart('linux') && needsRestart('linux-zen') && needsRestart('nvidi
 assert(!needsRestart('linux-headers') && !needsRestart('linux-api-headers') && !needsRestart('systemd-libs') && !needsRestart('firefox'));
 assert(majorChange('154.0.1-1', '155.0.1-1') && majorChange('1:2.0-1', '2:1.0-1') && majorChange('9-1', '10-1'));
 assert(!majorChange('6.18-1', '6.18.2-1') && !majorChange('1:25.2-1', '1:25.2.1-1'));
-console.log('OS update installation progress: passed');
+Log.info('OS update installation progress: passed');
+
+}

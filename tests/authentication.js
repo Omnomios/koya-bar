@@ -1,6 +1,8 @@
-import assert from 'node:assert/strict';
+import assert from './assert.js';
+import * as Log from 'Helix/Log';
 import { createAuthentication } from '../apps/authentication-model.js';
 
+export async function test() {
 let event, stops = 0, clock = 1000;
 const answers = [], canceled = [], windows = [], disposed = [], sshReplies = [];
 const backend = {
@@ -65,4 +67,6 @@ assert.equal(windows.at(-1).request.options.mode, 'confirm');
 await windows.at(-1).respond(''); await auth.settled();
 assert.deepEqual(answers.at(-1), [5, '']);
 await assert.rejects(auth.ask('Password?', 'unknown', ':1.2'), /Invalid authentication/);
-console.log('Authentication queue, retries, cancellation and session gating: passed');
+Log.info('Authentication queue, retries, cancellation and session gating: passed');
+
+}

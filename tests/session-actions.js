@@ -1,7 +1,9 @@
-import assert from 'node:assert/strict';
+import assert from './assert.js';
+import * as Log from 'Helix/Log';
 import { createSessionActions, logoutHyprland } from '../apps/session-actions.js';
 import { createShellService } from '../apps/shell-service.js';
 
+export async function test() {
 let locks = 0, logouts = 0, hold, release;
 const calls = [], capabilities = { CanSuspend: 'challenge', CanHibernate: 'no', CanReboot: 'yes', CanPowerOff: 'yes' };
 const actions = createSessionActions({
@@ -50,4 +52,6 @@ commands.length = 0;
 await logoutHyprland(async command => { commands.push(command); return commands.length === 1 ? 'Invalid dispatcher' : 'ok'; });
 assert.deepEqual(commands, ['dispatch hl.dsp.exit()', 'dispatch exit']);
 await assert.rejects(logoutHyprland(async () => 'Failed'), /could not end/);
-console.log('Session actions, logind capabilities, state gating and compositor logout: passed');
+Log.info('Session actions, logind capabilities, state gating and compositor logout: passed');
+
+}

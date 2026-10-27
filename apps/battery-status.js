@@ -1,9 +1,12 @@
+import { createChargeControls, upowerChargeBackend } from './charge-control.js';
+
 // UPower handles desktop and laptop batteries; no phone device access.
 const NAME = 'org.freedesktop.UPower', PATH = '/org/freedesktop/UPower';
 const PROPERTIES = 'org.freedesktop.DBus.Properties', DEVICE = NAME + '.Device';
 const states = { 1: 'charging', 2: 'discharging', 3: 'empty', 4: 'full', 5: 'pending-charge', 6: 'pending-discharge' };
 const reading = (value, name) => typeof value[name] === 'number' && Number.isFinite(value[name]) ? value[name] : -1;
-export function createBatteryStatus(bus, changed) {
+export function createBatteryStatus(bus, changed, { chargeBackends = [] } = {}) {
+  const chargeControls = createChargeControls([...chargeBackends, upowerChargeBackend(bus)]);
   let device, flight, dirty = false, disposed = false, previous = '';
   const batteries = new Map(), changing = new Set();
   const publish = value => {
@@ -43,13 +46,15 @@ export function createBatteryStatus(bus, changed) {
           }));
           if (disposed) break;
           batteries.clear();
-          for (const item of devices.filter(Boolean)) batteries.set(item.path, item);
+          const described = await chargeControls.describe(devices.filter(Boolean));
+          if (disposed) break;
+          for (const item of described) batteries.set(item.path, item);
           publish({ BatteryPresent: !!value.IsPresent, BatteryPercent: reading(value, 'Percentage'),
             BatteryState: states[value.State] || 'unknown', ExternalPower: power.OnBattery === false,
             BatteryTimeToEmpty: reading(value, 'TimeToEmpty'), BatteryTimeToFull: reading(value, 'TimeToFull'),
             BatteryRate: typeof value.EnergyRate === 'number' && Number.isFinite(value.EnergyRate) ? Math.abs(value.EnergyRate) : -1,
             BatteryEnergy: reading(value, 'Energy'), BatteryEnergyFull: reading(value, 'EnergyFull'),
-            BatteryDevices: JSON.stringify(devices.filter(Boolean)) });
+            BatteryDevices: JSON.stringify(described) });
         }
       } catch (_) { unavailable(); }
     })().finally(() => { flight = undefined; });
@@ -57,7 +62,8 @@ export function createBatteryStatus(bus, changed) {
   };
   const signal = event => {
     if (event.interface === PROPERTIES && event.args?.[0] === DEVICE || event.path === device || event.path === PATH
-      || event.member === 'NameOwnerChanged' && event.args?.[0] === NAME) refresh();
+      || event.member === 'NameOwnerChanged' && [NAME, 'org.framework_dbus'].includes(event.args?.[0])) refresh();
+    if (event.path?.startsWith('/org/framework_dbus')) refresh();
     if (event.interface === 'org.freedesktop.DBus.Local' && event.member === 'Disconnected') unavailable();
   };
   return {
@@ -67,8 +73,21 @@ export function createBatteryStatus(bus, changed) {
         await bus.addMatch("type='signal',sender='org.freedesktop.UPower',interface='org.freedesktop.DBus.Properties'");
         await bus.addMatch("type='signal',sender='org.freedesktop.UPower',interface='org.freedesktop.UPower'");
         await bus.addMatch("type='signal',sender='org.freedesktop.DBus',interface='org.freedesktop.DBus',member='NameOwnerChanged',arg0='org.freedesktop.UPower'");
+        await bus.addMatch("type='signal',sender='org.framework_dbus'");
+        await bus.addMatch("type='signal',sender='org.freedesktop.DBus',member='NameOwnerChanged',arg0='org.framework_dbus'");
         await refresh();
       } catch (_) { unavailable(); }
+    },
+    refresh,
+    async setChargeLimit(path, percent) {
+      if (disposed || changing.has(path)) throw new Error('Charge control change is unavailable');
+      changing.add(path);
+      try {
+        await refresh();
+        if (!batteries.get(path)?.adjustable) throw new Error('Adjustable charge control is unavailable');
+        await chargeControls.setLimit(path, percent); await refresh();
+        if (batteries.get(path)?.end !== percent) throw new Error('Could not confirm charge limit');
+      } finally { changing.delete(path); }
     },
     setChargeControl: async (path, enabled) => {
       if (typeof path !== 'string' || typeof enabled !== 'boolean') throw new Error('Invalid charge control arguments');
@@ -81,11 +100,11 @@ export function createBatteryStatus(bus, changed) {
         const battery = batteries.get(path);
         if (disposed || !battery?.thresholdSupported) throw new Error('Charge control is not supported by this battery');
         if (battery.thresholdEnabled === enabled) return;
-        await bus.call(NAME, path, DEVICE, 'EnableChargeThreshold', 'b', enabled);
+        await chargeControls.setEnabled(path, enabled);
         await refresh();
         if (disposed || batteries.get(path)?.thresholdEnabled !== enabled) throw new Error('Could not confirm the charge control change');
       } finally { changing.delete(path); }
     },
-    dispose: () => { disposed = true; batteries.clear(); bus.offSignal(signal); }
+    dispose: () => { disposed = true; batteries.clear(); chargeControls.dispose(); bus.offSignal(signal); }
   };
 }

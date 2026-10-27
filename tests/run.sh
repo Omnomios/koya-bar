@@ -66,20 +66,22 @@ for case in valid disabled missing missing-cache symlink cache-symlink fifo larg
   case $case in
     valid|disabled|missing-cache|cache-symlink|invalid-image)
       cp "$root/assets/brand/koya-fish.png" "$wallpaper_home/.local/share/koya-bar/wallpapers/fixture.png"
-      node --input-type=module - "$wallpaper_home" "$case" <<'JS'
-import fs from 'node:fs';
-import { createHash } from 'node:crypto';
-const [directory, kind] = process.argv.slice(2);
-const source = directory + '/.local/share/koya-bar/wallpapers/fixture.png';
-const info = fs.statSync(source, { bigint: true });
-const identity = source + ':' + info.mtimeNs / 1000000000n + ':' + info.mtimeNs % 1000000000n + ':' + info.size;
-const cache = directory + '/.cache/koya/wallpapers';
-fs.mkdirSync(cache, { recursive: true });
-const target = cache + '/koya-wallpaper-' + createHash('sha256').update(identity).digest('hex').slice(0, 24) + '.png';
-if (kind === 'cache-symlink') fs.symlinkSync(source, target);
-else if (kind === 'invalid-image') fs.writeFileSync(target, 'Not an image');
-else if (kind !== 'missing-cache') fs.copyFileSync(source, target);
-JS
+      python3 - "$wallpaper_home" "$case" <<'PYTHON'
+import hashlib
+from pathlib import Path
+import shutil
+import sys
+home, kind = Path(sys.argv[1]), sys.argv[2]
+source = home / '.local/share/koya-bar/wallpapers/fixture.png'
+info = source.stat()
+identity = f'{source}:{info.st_mtime_ns // 1000000000}:{info.st_mtime_ns % 1000000000}:{info.st_size}'
+cache = home / '.cache/koya/wallpapers'
+cache.mkdir(parents=True, exist_ok=True)
+target = cache / ('koya-wallpaper-' + hashlib.sha256(identity.encode()).hexdigest()[:24] + '.png')
+if kind == 'cache-symlink': target.symlink_to(source)
+elif kind == 'invalid-image': target.write_text('Not an image')
+elif kind != 'missing-cache': shutil.copyfile(source, target)
+PYTHON
       ;;
     symlink) ln -s "$root/assets/brand/koya-fish.png" "$wallpaper_home/.local/share/koya-bar/wallpapers/fixture.png" ;;
     fifo) mkfifo "$wallpaper_home/.local/share/koya-bar/wallpapers/fixture.png" ;;
@@ -95,4 +97,4 @@ JS
   if (( status != 0 )) || ! rg -q KOYA_GREETER_WALLPAPER_TEST_PASS "$greeter/wallpaper-$case.log" || rg -q KOYA_GREETER_WALLPAPER_TEST_FAIL "$greeter/wallpaper-$case.log"; then exit 1; fi
 done
 
-node "$root/tests/login-transport.mjs"
+python3 "$root/tests/login-transport.py"

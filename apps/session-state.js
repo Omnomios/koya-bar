@@ -1,11 +1,12 @@
 import { system as Bus } from 'Module/dbus';
 import * as Desktop from 'Module/desktop';
+import * as Process from 'Module/process';
+import { resolveSession } from './session-state-model.js';
 
 const NAME = 'org.freedesktop.login1', ROOT = '/org/freedesktop/login1', SESSION = NAME + '.Session';
-export const currentSession = async () => {
-  await Bus.connect();
-  return Bus.call(NAME, ROOT, NAME + '.Manager', 'GetSessionByPID', 'u', Desktop.processId());
-};
+export const currentSession = () => resolveSession(Bus, {
+  pid: Desktop.processId(), sessionId: Process.getEnv('XDG_SESSION_ID', ''), username: Desktop.userName()
+});
 export const setLockedHint = async locked => Bus.call(NAME, await currentSession(), SESSION, 'SetLockedHint', 'b', locked);
 
 export async function watchSession(changed) {

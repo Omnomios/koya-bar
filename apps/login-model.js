@@ -22,7 +22,10 @@ export function createLoginController({ request, onState = () => {}, onStarted }
       }
       if (reply?.type === 'success') {
         state.phase = 'starting'; state.message = 'Starting ' + session.name + '…'; await notify();
-        const result = await send({ type: 'start_session', cmd: session.cmd, env: session.env });
+        // greetd connects the session's output to its VT. Keep compositor and
+        // desktop logs in the journal during the graphical handoff.
+        const cmd = ['/usr/bin/systemd-cat', '--identifier=koya-session', '--', ...session.cmd];
+        const result = await send({ type: 'start_session', cmd, env: session.env });
         if (result?.type !== 'success') throw new Error(result?.description || 'Could not start the session.');
         authenticating = false; state.phase = 'started';
         // greetd waits for the greeter to exit. Release raw output before quit.
@@ -59,7 +62,8 @@ export function createLoginController({ request, onState = () => {}, onStarted }
         username = username.trim();
         if (!username || username.length > 256 || /[\x00-\x1f\x7f]/.test(username)) throw new Error('Enter a valid user name.');
         if (!selected?.cmd?.length) throw new Error('Choose an installed Wayland session.');
-        session = selected; state.username = username; state.notice = ''; state.message = 'Signing in…'; authenticating = true;
+        session = selected; state.username = username; state.phase = 'authenticating'; state.notice = ''; state.message = 'Signing in…'; authenticating = true;
+        await notify();
         return advance(await send({ type: 'create_session', username }));
       });
     },

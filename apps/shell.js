@@ -7,6 +7,7 @@ import * as Log from 'Helix/Log';
 import * as Hypr from 'Module/hypr';
 import { createNetworkStatus } from './network-status.js';
 import { createShellService, shellStatePayload } from './shell-service.js';
+import { createFramework, frameworkChargeProvider } from './framework-client.js';
 import { createBatteryStatus } from './battery-status.js';
 import { createPowerProfiles } from './power-profiles.js';
 import wallpaper from './wallpaper.js';
@@ -31,7 +32,7 @@ const methods = {
   CheckUpdates: ['', 'a{sv}'], InstallUpdates: ['', 'a{sv}'],
   GetSessionActions: ['', 's'], RunSessionAction: ['s', ''],
   OpenDisplays: ['', ''], GetDisplays: ['', 's'], ApplyDisplays: ['s', 's'], ConfirmDisplays: ['s', 's'], RevertDisplays: ['s', 's'],
-  SetSetting: ['ss', 'a{sv}'], SetPowerProfile: ['s', 'a{sv}'], SetChargeControl: ['sb', 'a{sv}'], SetCaffeine: ['b', 'a{sv}']
+  SetSetting: ['ss', 'a{sv}'], SetPowerProfile: ['s', 'a{sv}'], SetChargeControl: ['sb', 'a{sv}'], SetChargeLimit: ['su', 'a{sv}'], SetCaffeine: ['b', 'a{sv}']
 };
 export async function startShell() {
   await Bus.connect();
@@ -64,7 +65,13 @@ export async function startShell() {
     });
   };
   const profiles = createPowerProfiles(System, values => service.update(values));
-  const battery = createBatteryStatus(System, values => service.update(values));
+  const framework = createFramework(System, value => {
+    service.update({ FrameworkAvailable: value.available, FrameworkDevices: JSON.stringify(value.devices) });
+    battery.refresh();
+  });
+  const battery = createBatteryStatus(System, values => service.update(values), { chargeBackends: [
+    frameworkChargeProvider(framework, { limit: () => service.snapshot().FrameworkChargeLimit })
+  ] });
   const caffeine = createCaffeine({ bus: System, acquire: () => Sleep.acquire(),
     release: () => Sleep.release(), changed: values => service.update(values) });
   const updates = updatesService({ settings: stored, changed: values => service.update(values) });
@@ -74,7 +81,7 @@ export async function startShell() {
     allowed: () => { const state = service.snapshot(); return state.Active && state.ScreenState === 'unlocked'; },
     changed: () => emit('DisplaysChanged'), report: error => Log.error('Displays: ' + error) });
   const service = createShellService({ applications, stored, setPowerProfile: profiles.setProfile,
-    setChargeControl: battery.setChargeControl, setCaffeine: caffeine.setEnabled, updates, sessionActions, displays: displayControl,
+    setChargeControl: battery.setChargeControl, setChargeLimit: battery.setChargeLimit, setCaffeine: caffeine.setEnabled, updates, sessionActions, displays: displayControl,
     persist: text => Desktop.savePreferences(text), openBuiltin,
     changed: state => {
       updates.configure(state);
@@ -101,7 +108,7 @@ export async function startShell() {
   });
   const network = createNetworkStatus(System, values => service.update(values));
   // Status services can be slow or absent; first paint must not wait for them.
-  Promise.all([network.start(), battery.start(), profiles.start(), caffeine.start()])
+  Promise.all([network.start(), framework.start(), battery.start(), profiles.start(), caffeine.start()])
     .catch(error => Log.error('Desktop status: ' + error));
   // Checks run once for the shell, independently of monitors and open windows.
   setTimeout(() => updates.start(), 0);

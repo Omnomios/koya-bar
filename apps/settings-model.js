@@ -5,8 +5,9 @@ import { updateDefaults } from './updates-model.js';
 
 // GreeterWallpaper: the login screen may show this account's wallpaper
 // (built-ins only) once it knows the account.
-export const defaults = { Wallpaper: WALLPAPERS[0].id, Skin: 'koya', GreeterWallpaper: false, ...clockDefaults, ...updateDefaults };
+export const defaults = { Wallpaper: WALLPAPERS[0].id, Skin: 'koya', GreeterWallpaper: false, FrameworkChargeLimit: 80, ...clockDefaults, ...updateDefaults };
 export function settingValue(key, value) {
+  if (key === 'FrameworkChargeLimit' && /^\d+$/.test(String(value)) && Number(value) >= 25 && Number(value) < 100) return Number(value);
   if (key === 'Skin') return skinValue(value);
   if (key === 'Wallpaper' && (WALLPAPERS.some(item => item.id === value) || isUserWallpaper(value))) return value;
   if (key === 'ClockTimeFormat' && ['24h', '12h'].includes(value)) return value;

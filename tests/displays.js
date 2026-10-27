@@ -1,9 +1,12 @@
-import assert from 'node:assert/strict';
+import assert from './assert.js';
+import * as Log from 'Helix/Log';
 import { parseMode, monitorConfig, logicalSize, layoutView, snapPosition, arrangeDisplays,
   validateLayout, monitorRules, layoutKey, matchesLayout, validScale, validScales, nearestScale } from '../apps/displays-model.js';
 import { createDisplays } from '../apps/displays-service.js';
 import { createShellService } from '../apps/shell-service.js';
-const clone = x => structuredClone(x);
+
+export async function test() {
+const clone = x => JSON.parse(JSON.stringify(x));
 const monitors = [
   { id: 0, name: 'eDP-1', description: 'Laptop', serial: 'a', width: 2560, height: 1440, refreshRate: 60, scale: 1.6, x: 0, y: 0,
     transform: 0, disabled: false, mirrorOf: 'none', vrr: true, availableModes: ['2560x1440@60.00Hz', '1920x1080@60.00Hz'], currentFormat: 'XRGB8888' },
@@ -173,4 +176,6 @@ shell.update({ Active: true, ScreenState: 'unlocked' }); setDesired();
 const reply = JSON.parse(await shell.request('ApplyDisplays', [JSON.stringify(newLayout())]));
 await shell.request('RevertDisplays', [reply.pending.token]);
 assert(commands.includes('reload'));
-console.log('Display geometry, monitor validation, Lua quoting, preview rollback, persistence and session gating: passed');
+Log.info('Display geometry, monitor validation, Lua quoting, preview rollback, persistence and session gating: passed');
+
+}

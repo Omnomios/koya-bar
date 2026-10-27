@@ -9,9 +9,13 @@ foreach app : ['settings', 'wifi', 'account', 'updates', 'displays']
     output: 'koya-' + app + '.desktop', configuration: desktop_config)
 endforeach
 configure_file(input: 'hypridle.example.conf.in', output: 'hypridle.example.conf', configuration: desktop_config)
-node = find_program('node', required: false)
-if node.found()
-  foreach suite : ['login', 'lock', 'accounts', 'ssh-agent-model', 'authentication', 'authentication-view', 'updates', 'audio', 'session-actions', 'displays']
-    test(suite, node, args: files('tests/' + suite + '.mjs'))
-  endforeach
+bash = find_program('bash')
+koya = find_program('koya', required: false)
+if koya.found()
+  test('models', bash, args: files('tests/models.sh'), timeout: 60)
+  test('fingerprint-pam', bash, args: files('tests/fingerprint-pam.sh'), timeout: 45)
+endif
+python = find_program('python3', required: false)
+if python.found()
+  test('fingerprint-install', python, args: files('tests/fingerprint-install.py'))
 endif

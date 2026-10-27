@@ -61,7 +61,7 @@ build() {
       # Field codes (%f, %U…) mean nothing at login.
       command=$(entry "$file" Exec | sed -E 's/[[:space:]]+%[fFuUdDnNickvm]//g')
       desktops=$(entry "$file" DesktopNames | tr ';' ':' | sed 's/:*$//')
-      command="env XDG_SESSION_TYPE=wayland${desktops:+ XDG_CURRENT_DESKTOP=$desktops} $command"
+      command="env XDG_SESSION_TYPE=wayland${desktops:+ XDG_CURRENT_DESKTOP=$desktops} /usr/bin/systemd-cat --identifier=koya-session -- $command"
       printf '\n[initial_session]\ncommand = "%s"\nuser = "%s"\n' "$(toml "$command")" "$(toml "$user")" >> "$tmp"
     fi
   fi

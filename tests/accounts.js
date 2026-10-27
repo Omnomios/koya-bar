@@ -1,9 +1,11 @@
-import assert from 'node:assert/strict';
+import assert from './assert.js';
+import * as Log from 'Helix/Log';
 import { createAccountsService } from '../apps/accounts-model.js';
 
+export async function test() {
 const NAME = 'org.freedesktop.Accounts', USER = NAME + '.User';
 const bare = username => ({ username, name: username, icon: '', email: '', administrator: null, lastLogin: 0, home: '', shell: '', session: '' });
-const settle = async () => { for (let i = 0; i < 20; i++) await new Promise(resolve => setImmediate(resolve)); };
+const settle = async () => { for (let i = 0; i < 20; i++) await new Promise(resolve => setTimeout(resolve, 0)); };
 let signal, unavailable = false, release, blocked, denied = false;
 const matches = [], calls = [], writes = [];
 const profiles = { alice: { RealName: 'Alice Example', IconFile: '/var/lib/AccountsService/icons/alice', Email: 'alice@example.org', AccountType: 1,
@@ -96,4 +98,6 @@ await assert.rejects(accounts.setIcon('alice', 'file:///tmp/image.png'), /local 
 await assert.rejects(accounts.setName('alice', 'Bad\nName'), /valid display name/);
 await assert.rejects(accounts.setName('', 'New name'), /Invalid account/);
 assert.equal(writes.length, written);
-console.log('AccountsService checks passed');
+Log.info('AccountsService checks passed');
+
+}

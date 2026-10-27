@@ -27,10 +27,10 @@ PKEXEC_UID=$(id -u) "$helper" enable
 [[ $("$helper" status) == "$me" ]] || fail 'enable records the calling account'
 "$greetd" --write-only
 grep -qx '\[initial_session\]' "$KOYA_GREETD_RUNTIME" || fail 'automatic login adds an initial session'
-grep -qxF "command = \"env XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Fixture:Desk /usr/bin/true --fixture\"" "$KOYA_GREETD_RUNTIME" || { cat "$KOYA_GREETD_RUNTIME"; fail 'the account session starts, without field codes'; }
+grep -qxF "command = \"env XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Fixture:Desk /usr/bin/systemd-cat --identifier=koya-session -- /usr/bin/true --fixture\"" "$KOYA_GREETD_RUNTIME" || { cat "$KOYA_GREETD_RUNTIME"; fail 'the account session starts with journal output, without field codes'; }
 grep -qxF "user = \"$me\"" "$KOYA_GREETD_RUNTIME" || fail 'as the account'
 echo gone > "$work/session"; "$greetd" --write-only
-grep -qF 'command = "env XDG_SESSION_TYPE=wayland /usr/bin/env"' "$KOYA_GREETD_RUNTIME" || { cat "$KOYA_GREETD_RUNTIME"; fail 'an unknown session falls back to Hyprland'; }
+grep -qF 'command = "env XDG_SESSION_TYPE=wayland /usr/bin/systemd-cat --identifier=koya-session -- /usr/bin/env"' "$KOYA_GREETD_RUNTIME" || { cat "$KOYA_GREETD_RUNTIME"; fail 'an unknown session falls back to Hyprland with journal output'; }
 printf '\n[initial_session]\ncommand = "own"\nuser = "x"\n' >> "$KOYA_GREETD_BASE"; "$greetd" --write-only
 [[ $(grep -c '^\[initial_session\]' "$KOYA_GREETD_RUNTIME") == 1 ]] || fail 'an administrator initial session is left alone'
 PKEXEC_UID=$(id -u) "$helper" disable

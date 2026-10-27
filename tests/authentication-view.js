@@ -1,6 +1,8 @@
-import assert from 'node:assert/strict';
+import assert from './assert.js';
+import * as Log from 'Helix/Log';
 import { authenticationView } from '../apps/authentication-view.js';
 
+export async function test() {
 const home = '/home/alice';
 const view = (options, extra = {}) => authenticationView({ text: options.question, options, ...extra }, home);
 
@@ -36,4 +38,6 @@ v = view({ source: 'askpass', mode: 'entry', question: 'Enter passphrase for /ho
 assert.equal(v.detail, 'ssh git@example.com');
 v = view({ source: 'askpass', mode: 'confirm', question: 'Allow use of key /home/alice/.ssh/id_ed25519?\nKey fingerprint SHA256:abc123.', requester: 'ssh host' });
 assert.equal(v.detail, 'SHA256:abc123\nssh host');
-console.log('Authentication prompt presentation: passed');
+Log.info('Authentication prompt presentation: passed');
+
+}

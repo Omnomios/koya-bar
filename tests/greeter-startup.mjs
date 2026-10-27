@@ -12,6 +12,7 @@ const id = () => `element-${++nextId}`;
 const controls = new Map(), names = new Map(), labels = new Map(), inputs = new Map(), requests = [], sessionsSeen = [], wallpapersSeen = [];
 let remembered = 'alice';
 let refuseAnswer = false;
+let fingerprintTimeout = false, finishFingerprint;
 const input = options => {
   let value = '';
   const field = {
@@ -48,7 +49,11 @@ const modules = {
     request: async text => {
       const request = JSON.parse(text); requests.push(request);
       return request.type === 'create_session'
-        ? { type: 'auth_message', auth_message_type: 'secret', auth_message: 'Password:' }
+        ? fingerprintTimeout
+          ? { type: 'auth_message', auth_message_type: 'info', auth_message: 'Place your finger on the reader' }
+          : { type: 'auth_message', auth_message_type: 'secret', auth_message: 'Password:' }
+        : request.type === 'post_auth_message_response' && fingerprintTimeout
+          ? new Promise(resolve => { finishFingerprint = resolve; })
         : request.type === 'post_auth_message_response' && refuseAnswer
           ? { type: 'error', error_type: 'auth_error' }
           : { type: 'success' };
@@ -114,7 +119,9 @@ assert.deepEqual(requests, [{ type: 'create_session', username: 'alice' }], 'Con
 await inputs.get('greeter-answer').setValue('fixture-password');
 await controls.get(names.get('greeter-submit'))();
 assert.deepEqual(requests.at(-2), { type: 'post_auth_message_response', response: 'fixture-password' });
-assert.deepEqual(requests.at(-1), { type: 'start_session', cmd: ['labwc'], env: [] }, 'recalled session starts after the password prompt');
+assert.deepEqual(requests.at(-1), { type: 'start_session',
+  cmd: ['/usr/bin/systemd-cat', '--identifier=koya-session', '--', 'labwc'], env: [] },
+  'recalled session starts through systemd-cat after the password prompt');
 await instance.dispose();
 
 // A refused prompted conversation must wait for another deliberate Continue.
@@ -134,6 +141,31 @@ assert.deepEqual(requests.at(-1), { type: 'create_session', username: 'alice' },
   'Continue starts a fresh conversation for the prefilled account');
 await refused.dispose();
 
+// Fingerprint PAM can show information, then time out without a password prompt.
+requests.length = 0; refuseAnswer = false; fingerprintTimeout = true;
+const fingerprint = await greeter.namespace.createGreeter();
+const pendingFingerprint = controls.get(names.get('greeter-submit'))();
+for (let attempts = 0; !finishFingerprint && attempts < 20; attempts++) await delay(0);
+assert.equal(typeof finishFingerprint, 'function', 'fingerprint information waits for PAM response');
+assert.deepEqual(requests.slice(0, 2), [
+  { type: 'create_session', username: 'alice' },
+  { type: 'post_auth_message_response', response: null }
+], 'fingerprint information is acknowledged without a secret');
+assert.equal(labels.get(names.get('greeter-status')), 'Place your finger on the reader',
+  'fingerprint information stays visible during authentication');
+finishFingerprint({ type: 'error', error_type: 'auth_error' });
+await pendingFingerprint;
+await delay(0);
+assert.equal(requests.filter(request => request.type === 'create_session').length, 1,
+  'fingerprint timeout must not re-arm authentication');
+assert.equal(labels.get(names.get('greeter-status')), 'Authentication failed. Try again.');
+assert.equal(inputs.get('greeter-user').getValue(), 'alice');
+fingerprintTimeout = false; finishFingerprint = null;
+await controls.get(names.get('greeter-submit'))();
+assert.deepEqual(requests.at(-1), { type: 'create_session', username: 'alice' },
+  'Continue restarts authentication after a fingerprint timeout');
+await fingerprint.dispose();
+
 // Without a remembered account, the same Continue path accepts a typed name.
 remembered = ''; requests.length = 0; sessionsSeen.length = 0; refuseAnswer = false;
 const manual = await greeter.namespace.createGreeter();
@@ -144,4 +176,4 @@ await controls.get(names.get('greeter-submit'))();
 assert.deepEqual(requests, [{ type: 'create_session', username: 'bob' }]);
 assert.deepEqual(sessionsSeen, ['bob']);
 await manual.dispose();
-console.log('Greeter startup, refusal, recalled session, password and manual sign-in: passed');
+console.log('Greeter startup, refusal, fingerprint timeout, recalled session, password and manual sign-in: passed');

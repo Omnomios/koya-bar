@@ -140,7 +140,8 @@ export async function createGreeter({ preview = false, surface = 'raw' } = {}) {
     // PAM said and any prompt other than the password (a verification code).
     const failed = asking && state.error;
     const message = previewComplete ? 'Preview complete' : !sessions.length ? 'No Wayland sessions installed' : failed ? state.message
-      : challenge ? [state.notice, /^password:?\s*$/i.test(state.prompt) ? '' : state.prompt].filter(Boolean).join(' · ') : '';
+      : challenge ? [state.notice, /^password:?\s*$/i.test(state.prompt) ? '' : state.prompt].filter(Boolean).join(' · ')
+      : state.busy ? state.notice || state.message : '';
     const nextPhase = asking ? 'account' : 'answer';
     await Promise.all([
       user.setDisabled(state.busy || !asking), answer.setDisabled(state.busy || !challenge),

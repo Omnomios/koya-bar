@@ -355,6 +355,9 @@ the desktop as the authenticated user. Escape or Back cancels authentication;
 secret prompts stay masked. The last account and its opted-in wallpaper are
 recalled, and AccountsService supplies its last selected session.
 
+Greeter and desktop session output goes to the journal, keeping startup text
+off the VT. Read it with `journalctl -b -t koya-greeter -t koya-session`.
+
 The Account app's **Automatic** switch uses polkit to record automatic login
 in `/etc/koya-greeter/autologin`. The installed greetd wrapper builds its runtime
 configuration under `/run/koya-greeter/` and adds an initial session for that
@@ -449,6 +452,75 @@ The Koya lock screen reports its lock state to logind. An alternative locker
 must also maintain logind's `LockedHint` for authentication prompts to follow
 its lock state.
 
+## Fingerprint support (experimental)
+
+The `feature/fingerprint-auth` branch adds **Account → Sign-in → Fingerprints**
+for enrollment and removal using fprintd, fingerprint unlock with a separate
+password fallback, and display of fingerprint PAM prompts in the login greeter.
+Fingerprint records stay in fprintd; Koya does not store biometric data.
+
+Lock fingerprint authentication uses `Module/pam`'s cancellable `begin()` API
+(helix-plugins 0.7.1 build 921 or newer). PAM owns its embedded authentication
+worker; Koya translates its messages and outcomes for the lock UI.
+
+On Arch, install `fprintd`, build the native modules, and run `./account.sh` from
+this checkout to enroll a finger. Enrollment does not require a PAM change.
+Enable lock authentication and optional greetd fingerprint login with:
+
+```bash
+sudo python3 ./install-fingerprint.py --greeter
+./lock.sh
+```
+
+The installer backs up greetd's PAM file and adds a fingerprint-first attempt
+(maximum three tries, ten-second timeout), followed by its existing password
+stack. It only edits the stock Arch greetd auth stack; custom policies require
+manual review. It does not restart greetd or change `system-auth`.
+The lock screen shows PAM retry prompts and restarts ended scans automatically.
+Retries start after two seconds, backing off to at most 30 seconds if failures
+continue. Typing a password cancels both scanning and pending retries. There is no retry
+button. Fingerprint unlock also runs PAM account checks. Typing a password cancels the
+lock screen's fingerprint transaction before starting password authentication.
+
+The installed shell does not automatically use this checkout. Test enrollment
+and locking with the scripts above. For greeter UI testing, `./greeter.sh
+--preview` runs the checkout without logging out. The existing
+`sudo ./install-greeter.sh` installs this checkout as the greeter (and changes
+its greetd configuration); use that only when ready for the real login test.
+A fingerprint login cannot unlock a password-encrypted keyring by itself.
+
+To remove the managed PAM rules, preserving other settings:
+
+```bash
+sudo python3 ./install-fingerprint.py --greeter --disable
+```
+
+Before merging, verify on the device: add and remove a finger; cancel enrollment
+and retry; unlock with the enrolled finger; ensure an unregistered finger cannot
+unlock; type a password during a scan; verify password fallback after a timeout;
+and log in through greetd using both methods. Verify the final enrolled finger
+can be removed and password authentication still works. These checks require a
+normal desktop session and are not replaced by simulated test results.
+
+Run the fingerprint D-Bus contract against a private fixture (requires
+`python-gobject` and permission to create local sockets):
+
+```bash
+bash tests/fingerprint-dbus.sh
+```
+
+Test the installed PAM plugin and Koya's fingerprint adapter with isolated
+fixture credentials and no system PAM changes:
+
+```bash
+bash tests/fingerprint-pam.sh
+```
+
+This runs the real plugin and its embedded worker with a test-only PAM backend.
+It covers live messages, refusals, account checks, unexpected password prompts,
+timeout, cancellation races and password handoff. The test skips when sandbox
+restrictions prevent private socket IPC; run it in a normal terminal then.
+
 ## Develop and test
 
 UI code is in `apps/`, artwork in `assets/`, and native modules in
@@ -458,10 +530,10 @@ The shell's release version lives in [`VERSION`](VERSION), independently of the
 Koya runtime version. Meson and release packaging should use this file. Run
 `./run.sh --version` to print it without launching the shell.
 
-Run the focused login, locking, account, authentication and update checks with Node.js:
+Run the model checks in Koya's own JavaScript runtime (no Node.js required):
 
 ```bash
-npm test
+bash tests/models.sh
 ```
 
 For native integration checks:
@@ -508,3 +580,23 @@ does not unlock LUKS or change boot configuration. Its demo password is `koya`.
 Project material is released under Creative Commons Attribution 4.0
 International; see [LICENSE](LICENSE) and [NOTICE](NOTICE). The bundled Inter
 fonts and QuickJS header retain their original licences.
+
+### Framework hardware controls
+
+The optional sibling project `../framework-dbus` supplies Framework charge,
+cooling and lighting controls over the system bus. Install its package or
+follow its README. No additional Koya native plugin or Framework CLI is needed.
+The power popup gains an adjustable charge ceiling; Settings adds Cooling and
+Keyboard & lighting when the service reports supported hardware. UPower still
+supplies battery telemetry and charge controls on other devices.
+
+Fan overrides last only while Cooling remains open in the active unlocked
+session. Closing the page returns the fans to automatic control. Charge and
+lighting persistence follows the firmware; Koya remembers the last chosen
+charge ceiling for the enable switch without applying it at login.
+
+Run the JS model tests with `bash tests/models.sh`. For the actual native D-Bus
+client against simulated hardware, build the sibling project and run
+`bash tests/framework-dbus.sh` from a normal terminal. That test creates a
+private session bus and never writes to the real EC. Hardware acceptance steps
+are in `../framework-dbus/docs/hardware-testing.md`.
