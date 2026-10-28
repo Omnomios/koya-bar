@@ -112,7 +112,11 @@ export const ELEVATION = {
   popover: { surface: SURFACE.overlay, edge: BORDER.surface, radius: RADIUS.surface, shadow: 'popover' },
   panel: { surface: SURFACE.overlay, edge: BORDER.surface, radius: RADIUS.surface, shadow: 'popover' },
   banner: { surface: SURFACE.overlay, edge: BORDER.surface, radius: RADIUS.surface, shadow: 'card' },
-  inset: { surface: SURFACE.inset, edge: null, radius: RADIUS.control, shadow: null }
+  inset: { surface: SURFACE.inset, edge: null, radius: RADIUS.control, shadow: null },
+  // A search block and the sheet hanging beneath it: solid where you type,
+  // translucent where results gather, so the desktop shows through.
+  block: { surface: SURFACE.background, edge: BORDER.surface, radius: RADIUS.surface, shadow: 'popover' },
+  sheet: { surface: alpha(SURFACE.background, 0.78), edge: BORDER.surface, radius: RADIUS.surface, shadow: null }
 };
 
 // ---- Motion ---------------------------------------------------------------

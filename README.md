@@ -112,6 +112,27 @@ Each app also runs on its own. Bind `launcher.sh` to a shortcut in place of
 ./lock.sh         # Lock the session
 ```
 
+The application picker opens as a single search block. Results hang beneath it
+on a translucent sheet once you type; press ↓, Tab or Enter on an empty field to
+browse every application, and ↑ from the top to fold the list away again.
+
+To frost what shows through the sheet, add a Hyprland layer rule for the
+picker's `koya-launcher` namespace to `~/.config/hypr/hyprland.lua`, then run
+`hyprctl reload`:
+
+```lua
+hl.layer_rule({
+  name = "koya-launcher-blur",
+  match = { namespace = "^koya-launcher$" },
+  blur = true,
+  ignore_alpha = 0.6,
+})
+```
+
+The picker's overlay covers the whole output and is mostly clear, so
+`ignore_alpha = 0.6` limits the blur to the block and the sheet (alpha 0.78).
+Without the rule, the sheet is plainly translucent.
+
 To add Account, Koya Settings, Koya Wi-Fi and OS Updates to other launchers and desktop
 menus, run `./install-desktop-entries.sh`. It writes to
 `${XDG_DATA_HOME:-~/.local/share}/applications`, or to the directory given as
