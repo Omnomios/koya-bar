@@ -22,7 +22,7 @@ import { authentication } from './authentication.js';
 import { updatesService } from './updates-process.js';
 import { createSessionActions, logoutHyprland } from './session-actions.js';
 import { createSessionMenu } from './session-menu.js';
-import { createDisplays } from './displays-service.js';
+import { createDisplays, queryDisplayMonitors } from './displays-service.js';
 import { createCaffeine } from './caffeine.js';
 
 const NAME = 'org.koya.Shell1', PATH = '/org/koya/Shell1';
@@ -76,7 +76,7 @@ export async function startShell() {
     release: () => Sleep.release(), changed: values => service.update(values) });
   const updates = updatesService({ settings: stored, changed: values => service.update(values) });
   const sessionActions = createSessionActions({ bus: System, lock: () => openBuiltin('lock'), logout: () => logoutHyprland(command => Hypr.send(command)) });
-  const displayControl = createDisplays({ query: () => Hypr.json('monitors', ['all']), send: command => Hypr.send(command),
+  const displayControl = createDisplays({ query: () => queryDisplayMonitors(command => Hypr.send(command)), send: command => Hypr.send(command),
     load: () => Desktop.loadDisplays(), save: text => Desktop.saveDisplays(text),
     allowed: () => { const state = service.snapshot(); return state.Active && state.ScreenState === 'unlocked'; },
     changed: () => emit('DisplaysChanged'), report: error => Log.error('Displays: ' + error) });

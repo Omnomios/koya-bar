@@ -311,7 +311,8 @@ export async function displayApp({ request = requestShell, watch = watchShell } 
       text(win, null, subtitle(), TYPE.caption, width - modeWidth - SPACE.m, 18, TEXT.secondary, FONT, 'left')]);
     updates.push(() => UI.setTextString(win, detail, subtitle()));
     const right = Math.max(0, ...arranged.filter(o => o.name !== c.name).map(o => o.x + logicalSize(o, monitor(o)).width));
-    const modes = await segmented([['extend', 'Extend'], ['mirror', 'Mirror', !targets.length], ['off', 'Off', mode !== 'off' && arranged.length === 1 && !c.mirror]], mode, value => {
+    const modes = await segmented([['extend', 'Extend'], ['mirror', 'Mirror', !targets.length],
+      ['off', 'Off', !latest.canDisable || mode !== 'off' && arranged.length === 1 && !c.mirror]], mode, value => {
       if (value === 'extend') set({ enabled: true, mirror: '', ...(mode === 'extend' ? {} : { x: right, y: 0 }) });
       else if (value === 'mirror') set({ enabled: true, mirror: targets[0].name });
       else set({ enabled: false, mirror: '' });
@@ -319,6 +320,11 @@ export async function displayApp({ request = requestShell, watch = watchShell } 
     await Promise.all([UI.attach(win, header, words), UI.attach(win, header, modes)]);
     await Promise.all([UI.attach(win, page.el, header), UI.setLayoutOrder(win, header, 1)]);
     page.items = [header];
+    if (!latest.canDisable) {
+      const hint = await text(win, page.el, 'Off unavailable: this compositor cannot track disabled displays.', TYPE.caption,
+        width, 18, TEXT.secondary, FONT, 'left');
+      await UI.setLayoutOrder(win, hint, 2);
+    }
 
     // Its settings.
     let cardHeight = 0;
@@ -326,7 +332,7 @@ export async function displayApp({ request = requestShell, watch = watchShell } 
       if (mode === 'mirror' && targets.length > 1) {
         const card = await formCard(1, width);
         await formLine(card.content, card.inner, 'Showing', width => picker(targets.map(o => [o.name, numberOf(o) + ' · ' + titleFor(o)]), c.mirror, value => set({ mirror: value }), width, 'mirror', '', bind(() => c.mirror)), card.control);
-        await Promise.all([UI.attach(win, page.el, card.id), UI.setLayoutOrder(win, card.id, 2)]);
+        await Promise.all([UI.attach(win, page.el, card.id), UI.setLayoutOrder(win, card.id, 3)]);
         settingsCard = card; cardHeight = card.height; page.items.push(card.id);
       } else if (mode === 'extend') {
         const card = await formCard(5, width), modes = (monitor(c).availableModes || []).map(parseMode).filter(Boolean);
@@ -357,7 +363,7 @@ export async function displayApp({ request = requestShell, watch = watchShell } 
         const more = await frame.navigate(null, 'Advanced', 'Colour, HDR and variable refresh', LINE, () => go({ kind: 'advanced', title: titleFor(c) }, 1),
           { width: card.inner, colour: CLEAR, radius: RADIUS.control });
         await Promise.all([UI.attach(win, card.content, more.target), UI.setElementId(win, more.target, 'displays-advanced')]);
-        await Promise.all([UI.attach(win, page.el, card.id), UI.setLayoutOrder(win, card.id, 2)]);
+        await Promise.all([UI.attach(win, page.el, card.id), UI.setLayoutOrder(win, card.id, 3)]);
         settingsCard = card; cardHeight = card.height; page.items.push(card.id);
       }
     };
@@ -379,8 +385,8 @@ export async function displayApp({ request = requestShell, watch = watchShell } 
     ]);
     await Promise.all([UI.attach(win, footer, spacer), UI.attach(win, footer, reset), UI.attach(win, footer, apply_),
       UI.setElementId(win, reset, 'displays-reset'), UI.setElementId(win, apply_, 'displays-apply')]);
-    await Promise.all([UI.attach(win, page.el, footer), UI.setLayoutOrder(win, footer, 3)]);
-    page.height = CANVAS + HEADER + (cardHeight ? cardHeight + SPACE.m : 0) + ACTION + SPACE.m * 2 + SPACE.xs + GUTTER;
+    await Promise.all([UI.attach(win, page.el, footer), UI.setLayoutOrder(win, footer, 4)]);
+    page.height = CANVAS + HEADER + (!latest.canDisable ? 18 + SPACE.m : 0) + (cardHeight ? cardHeight + SPACE.m : 0) + ACTION + SPACE.m * 2 + SPACE.xs + GUTTER;
     page.refreshControls = async () => {
       if (current() !== c || shapeOf() !== shape) return false;
       const nextCardShape = cardShapeOf();
@@ -525,7 +531,7 @@ export async function displayApp({ request = requestShell, watch = watchShell } 
       const value = await request('GetDisplays');
       const topology = latest && layoutKey(value.monitors) !== layoutKey(latest.monitors);
       const ended = latest?.pending && !value.pending;
-      const changed = !latest || topology || ended || !!value.pending !== !!latest.pending;
+      const changed = !latest || topology || ended || value.canDisable !== latest.canDisable || !!value.pending !== !!latest.pending;
       latest = value;
       if (!value.pending) span = 0;
       if (!dirty || topology || ended) { draft = clone(value.configs); dirty = false; }

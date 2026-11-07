@@ -241,6 +241,10 @@ along the bottom of the arrangement). Each display can **Extend** the desktop,
 **Mirror** another, or be **Off**; at least one must stay on. An extended
 display has resolution, refresh rate, scale and rotation in one card.
 **Arrange** lines displays up in a row after a scale or rotation change.
+If the compositor rejects the query for all monitors, Koya retries the ordinary
+monitor query. That fallback may omit disabled displays, so Displays disables
+**Off** and explains why. Apply also rejects attempts to turn a display off in
+this mode. **Off** remains available when the all-monitor query works.
 
 Scale choices are calculated for the selected resolution using Hyprland's
 whole-pixel and 1/120-step checks. Changing resolution preserves the scale
