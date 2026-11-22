@@ -6,7 +6,7 @@ import * as Log from 'Helix/Log';
 import * as Process from 'Module/process';
 import * as Assets from 'Koya/Assets';
 import * as UI from './theme-ui.js';
-import { createLoginController } from './login-model.js';
+import { createLoginController, METHOD_PROMPT } from './login-model.js';
 import { clockDefaults } from './clock-model.js';
 import { WALLPAPERS, isUserWallpaper, setUserWallpapers } from './wallpapers.js';
 import { configureWallpaper } from './wallpaper-surface.js';
@@ -97,21 +97,21 @@ export async function createGreeter({ preview = false, surface = 'raw' } = {}) {
   let shownWallpaper = await accountWallpaper(returning) || systemWallpaper();
   await configureWallpaper({ Wallpaper: shownWallpaper });
   const { win, size } = await openWindow(surface);
-  let screen, user, answer, avatar, heading, status, actionLabel, feedback, back, chip, chipLabel, list, controller, clockTimer;
+  let screen, user, answer, avatar, heading, status, action, actionLabel, feedback, back, chip, chipLabel, list, controller, clockTimer;
   let accountName = '', avatarUser = '';
   let selected = 0, closed = false, disposePending = false, previewComplete = false, promptKey = '', phase = '', listOpen = false, shownStatus = '';
   // Kept only in this closure until greetd actually asks for a password.
-  let queuedPassword = null;
+  let queuedPassword = null, methodChoice = null;
   const dispose = async () => {
     if (closed) return;
     // Let the active conversation finish its reply and cancellation before
     // closing the transport. start_session cannot be undone once sent.
     if (controller?.state.busy && controller.state.phase !== 'started') {
-      disposePending = true; queuedPassword = null;
+      disposePending = true; queuedPassword = null; methodChoice = null;
       await controller.cancel();
       return;
     }
-    closed = true; queuedPassword = null; Event.off('keyDown', key); clearInterval(clockTimer); screen?.stop();
+    closed = true; queuedPassword = null; methodChoice = null; Event.off('keyDown', key); clearInterval(clockTimer); screen?.stop();
     if (['authenticating', 'prompt', 'starting'].includes(controller?.state.phase)) await controller.cancel();
     await answer?.setValue('');
     await Promise.all([user?.destroy(), answer?.destroy(), avatar?.dispose()]);
@@ -119,12 +119,19 @@ export async function createGreeter({ preview = false, surface = 'raw' } = {}) {
   };
   const goBack = async () => {
     if (closed || previewComplete || !['prompt', 'authenticating'].includes(controller.state.phase)) return;
-    queuedPassword = null;
+    queuedPassword = null; methodChoice = null;
     const cancellation = controller.cancel();
     await answer.setValue(''); await cancellation;
   };
   const key = async event => {
-    if (event.id !== win || ![1, 65307].includes(Number(event.key))) return;
+    if (event.id !== win) return;
+    if ([106, 65363].includes(Number(event.key)) && !listOpen && controller?.state.phase === 'prompt'
+        && controller.state.secret && controller.state.prompt === METHOD_PROMPT && !controller.state.busy && !methodChoice
+        && answer.getValue() === '') {
+      methodChoice = {};
+      await controller.selectFingerprint(); return;
+    }
+    if (![1, 65307].includes(Number(event.key))) return;
     if (listOpen) return showList(false);
     if (preview && controller.state.phase !== 'prompt') { await dispose(); Engine.quit(); }
     else await goBack();
@@ -143,27 +150,30 @@ export async function createGreeter({ preview = false, surface = 'raw' } = {}) {
   const render = async state => {
     if (closed) return;
     const asking = state.phase === 'username', challenge = state.phase === 'prompt', waiting = state.phase === 'authenticating';
-    const passwordPrompt = challenge && state.secret && /^password:?\s*$/i.test(state.prompt);
-    if (!waiting && !passwordPrompt) queuedPassword = null;
+    const methodPrompt = challenge && state.secret && state.prompt === METHOD_PROMPT;
+    const passwordPrompt = challenge && state.secret && state.prompt === 'Password:';
+    if (!methodPrompt) methodChoice = null;
+    if (!waiting && !passwordPrompt && !methodPrompt) queuedPassword = null;
     const nextPrompt = state.phase + ':' + state.prompt + ':' + state.secret;
     if (nextPrompt !== promptKey) {
       promptKey = nextPrompt;
-      await Promise.all([...(passwordPrompt ? [] : [answer.setValue('')]), answer.setRevealed(challenge && !state.secret), answer.setPlaceholder(placeholder(state.prompt))]);
+      await Promise.all([...(passwordPrompt || methodPrompt ? [] : [answer.setValue('')]), answer.setRevealed(challenge && !state.secret), answer.setPlaceholder(methodPrompt ? 'Password:' : placeholder(state.prompt))]);
     }
     if (closed) return;
     // Failures come back to the account step. Answering, the line carries what
     // PAM said and any prompt other than the password (a verification code).
     const failed = asking && state.error;
     const message = previewComplete ? 'Preview complete' : !sessions.length ? 'No Wayland sessions installed' : failed ? state.message
-      : challenge ? [state.notice, passwordPrompt ? '' : state.prompt].filter(Boolean).join(' · ')
+      : challenge ? [state.notice, methodPrompt ? 'Press → for fingerprint' : passwordPrompt ? '' : state.prompt].filter(Boolean).join(' · ')
       : state.busy ? state.notice || state.message : '';
     const nextPhase = asking ? 'account' : 'answer';
     await Promise.all([
       user.setDisabled(state.busy || !asking), answer.setDisabled(!waiting && (state.busy || !challenge)),
       UI.setTextString(win, heading, asking ? 'Sign in' : avatarUser === state.username ? accountName || state.username : state.username),
       UI.setTextString(win, status, message), UI.setTextColour(win, status, failed || !sessions.length ? TEXT.accent : TEXT.secondary),
-      UI.setTextString(win, actionLabel, previewComplete ? 'Restart preview' : asking ? 'Continue' : 'Sign in'),
+      UI.setTextString(win, actionLabel, previewComplete ? 'Restart preview' : state.busy && /finger/i.test(state.notice) ? 'Scanning…' : asking ? 'Continue' : 'Sign in'),
       UI.setEnabled(win, back, challenge || waiting), UI.setHitTarget(win, chip, !state.busy && (asking || challenge)),
+      UI.setHitTarget(win, action, !state.busy),
       state.busy ? feedback.begin() : feedback.end()
     ]);
     // The field swaps: the account slides out, the answer slides in (and back).
@@ -192,8 +202,11 @@ export async function createGreeter({ preview = false, surface = 'raw' } = {}) {
   const newController = () => createLoginController({
     request: preview ? async text => {
       const request = JSON.parse(text);
-      if (request.type === 'create_session') return { type: 'auth_message', auth_message_type: 'secret', auth_message: 'Password:' };
+      if (request.type === 'create_session') return { type: 'auth_message', auth_message_type: 'secret', auth_message: METHOD_PROMPT };
       if (request.type === 'post_auth_message_response') return request.response === 'koya' ? { type: 'success' }
+        : request.response === 'password' ? { type: 'auth_message', auth_message_type: 'secret', auth_message: 'Password:' }
+        : request.response === 'fingerprint'
+          ? { type: 'auth_message', auth_message_type: 'info', auth_message: 'Place your finger on the reader' }
         : { type: 'error', error_type: 'auth_error' };
       return { type: 'success' };
     } : Login.request,
@@ -225,7 +238,12 @@ export async function createGreeter({ preview = false, surface = 'raw' } = {}) {
       return controller.begin(name, sessions[selected]);
     }
     if (controller.state.phase === 'prompt') {
-      let value = answer.getValue(); await answer.setValue('');
+      if (controller.state.secret && controller.state.prompt === METHOD_PROMPT && methodChoice) return;
+      let value = answer.getValue();
+      const choice = controller.state.secret && controller.state.prompt === METHOD_PROMPT ? {} : null;
+      if (choice) { methodChoice = choice; queuedPassword = value; }
+      await answer.setValue('');
+      if (choice && (methodChoice !== choice || closed || disposePending)) return;
       const result = controller.respond(value); value = ''; return result;
     }
   };
@@ -287,7 +305,7 @@ export async function createGreeter({ preview = false, surface = 'raw' } = {}) {
       ]);
       await Promise.all([UI.attach(win, slot, user.master.id), UI.attach(win, slot, answer.master.id)]);
       status = await text(win, null, '', TYPE.caption, INNER, STATUS_HEIGHT, TEXT.secondary);
-      const action = await button(win, null, 'Continue', INNER, ACTION_HEIGHT, submit, { colour: SURFACE.accent, labelColour: TEXT.onAccent, size: TYPE.body,
+      action = await button(win, null, 'Continue', INNER, ACTION_HEIGHT, submit, { colour: SURFACE.accent, labelColour: TEXT.onAccent, size: TYPE.body,
         onLabel: id => { actionLabel = id; }, onFeedback: value => { feedback = value; } });
       for (const [index, id] of [person, slot, status, action].entries()) { await UI.setLayoutOrder(win, id, index); await UI.attach(win, card.content, id); }
       await Promise.all([UI.setElementId(win, action, 'greeter-submit'), UI.setElementId(win, back, 'greeter-back'), UI.setElementId(win, status, 'greeter-status')]);

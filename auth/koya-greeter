@@ -1,0 +1,14 @@
+#%PAM-1.0
+# Koya selects a method once; each branch ends on its own result.
+# Password auth uses the live site greetd stack and its try_first_pass policy.
+auth [success=5 authinfo_unavail=ignore default=die] pam_koya_greeter.so
+# The selector checks the stock greetd auth chain before this bypass.
+auth requisite pam_securetty.so
+auth requisite pam_nologin.so
+auth requisite pam_shells.so
+auth requisite pam_faillock.so preauth
+auth [success=done default=die] pam_fprintd.so max-tries=3 timeout=10
+auth include greetd
+account include greetd
+password include greetd
+session include greetd

@@ -21,6 +21,10 @@ install -o root -g root -d -m 755 /usr/local/lib/koya-greeter
 ln -sfnT -- "$root" /usr/local/share/koya-greeter
 install -o root -g root -m 755 "$root/build/native/modules/libhx-login.so" \
   "$root/build/native/modules/libhx-desktop.so" /usr/local/lib/koya-greeter/
+if [[ -f $root/build/native/modules/pam_koya_greeter.so ]]; then
+  install -o root -g root -d -m 755 /usr/lib/security
+  install -o root -g root -m 755 "$root/build/native/modules/pam_koya_greeter.so" /usr/lib/security/
+fi
 install -o root -g root -m 755 "$root/greeter-installed.sh" /usr/local/bin/koya-greeter
 # Automatic login: the helper (run through pkexec), its polkit action, and
 # greetd starting through koya-greetd, which adds initial_session when on.

@@ -7,6 +7,13 @@ shared_library('hx-login', 'login.cpp', name_prefix: 'lib',
   override_options: ['b_lundef=false'], include_directories: include_directories('../sdk'),
   dependencies: [gio], cpp_args: ['-fvisibility=hidden'])
 
+# greetd loads this module from its Koya-owned PAM service. The greeter can be
+# built without PAM development headers; fingerprint opt-in preflights the .so.
+if meson.get_compiler('cpp').has_header('security/pam_modules.h')
+  shared_module('pam_koya_greeter', 'pam-koya-greeter.cpp', name_prefix: '',
+    override_options: ['b_lundef=false'], install: true, install_dir: '/usr/lib/security')
+endif
+
 shared_library('hx-sleep', 'sleep.cpp', name_prefix: 'lib',
   override_options: ['b_lundef=false'], include_directories: include_directories('../sdk'),
   dependencies: [gio, dependency('threads')], cpp_args: ['-fvisibility=hidden'])

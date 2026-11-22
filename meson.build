@@ -10,6 +10,11 @@ foreach app : ['settings', 'wifi', 'account', 'updates', 'displays']
 endforeach
 configure_file(input: 'hypridle.example.conf.in', output: 'hypridle.example.conf', configuration: desktop_config)
 bash = find_program('bash')
+pam = meson.get_compiler('cpp').find_library('pam', required: false)
+if pam.found() and meson.get_compiler('cpp').has_function('pam_start_confdir',
+    prefix: '#include <security/pam_appl.h>', dependencies: pam)
+  test('greeter-pam-route', bash, args: files('tests/greeter-pam-route.sh'), timeout: 45)
+endif
 koya = find_program('koya', required: false)
 if koya.found()
   test('models', bash, args: files('tests/models.sh'), timeout: 60)

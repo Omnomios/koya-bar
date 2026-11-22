@@ -497,10 +497,23 @@ sudo python3 ./install-fingerprint.py --greeter
 ./lock.sh
 ```
 
-The installer backs up greetd's PAM file and adds a fingerprint-first attempt
-(maximum three tries, ten-second timeout), followed by its existing password
-stack. It only edits the stock Arch greetd auth stack; custom policies require
-manual review. It does not restart greetd or change `system-auth`.
+The installer leaves `/etc/pam.d/greetd` unchanged. With `--greeter`, it
+selects Koya's separate PAM service through greetd's `[general]` setting.
+After choosing an account, the password field is ready immediately. Press
+Right with the field empty to start fingerprint authentication (maximum three
+tries, ten-second timeout). Enter selects password; the typed secret is sent
+only when the normal `Password:` prompt arrives. The method prompt is a choice,
+not a credential. A failed password does not start a scan. The Koya service
+uses the live greetd stack for passwords and keeps greetd responsible for
+account and session checks. Fingerprint selection is refused if the reviewed
+Arch auth rules in `greetd`, `system-local-login`, `system-login`, or
+`system-auth` change. `pam_securetty` only restricts root and requires greetd
+to set PAM_TTY; `pam_nologin` may return PAM_IGNORE when no lockout applies.
+The installer preserves custom greetd service choices
+and does not restart greetd or change `system-auth`.
+If the older Koya managed fingerprint block is still in `/etc/pam.d/greetd`,
+review and restore that file from `greetd.before-koya-fingerprint` before
+enabling this separate service. The installer will stop without changing it.
 The lock screen shows PAM retry prompts and restarts ended scans automatically.
 Retries start after two seconds, backing off to at most 30 seconds if failures
 continue. Typing a password cancels both scanning and pending retries. There is no retry
@@ -514,15 +527,22 @@ and locking with the scripts above. For greeter UI testing, `./greeter.sh
 its greetd configuration); use that only when ready for the real login test.
 A fingerprint login cannot unlock a password-encrypted keyring by itself.
 
-To remove the managed PAM rules, preserving other settings:
+To disable fingerprint login and restore the previous greetd service selection:
 
 ```bash
 sudo python3 ./install-fingerprint.py --greeter --disable
 ```
 
+The installer keeps `/etc/pam.d/koya-greeter` as a Koya-owned password-only
+service. All four PAM groups include `greetd`; it has no fingerprint selector or
+`pam_fprintd` rule. A running greetd may still request this service until it is
+restarted. Repeating `--disable` is safe, and `--greeter` restores fingerprint
+support. The installer refuses local changes to either Koya service policy.
+
 Before merging, verify on the device: add and remove a finger; cancel enrollment
 and retry; unlock with the enrolled finger; ensure an unregistered finger cannot
-unlock; type a password during a scan; verify password fallback after a timeout;
+unlock; type a password during a lock scan; verify a greeter scan failure
+returns to account selection without starting a password attempt;
 and log in through greetd using both methods. Verify the final enrolled finger
 can be removed and password authentication still works. These checks require a
 normal desktop session and are not replaced by simulated test results.

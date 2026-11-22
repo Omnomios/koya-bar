@@ -1,5 +1,7 @@
 // greetd owns the PAM conversation and session lifecycle. Each reply advances
 // one conversation; passwords are supplied only in response to its prompts.
+export const METHOD_PROMPT = 'Koya authentication method v1:';
+const selectorPrompt = state => state.phase === 'prompt' && state.secret && state.prompt === METHOD_PROMPT;
 export function createLoginController({ request, onState = () => {}, onStarted }) {
   // `error`: the last attempt failed (message says why); `refused`: PAM
   // rejected the answer, so the same account can simply try again. `notice`: text PAM
@@ -86,8 +88,16 @@ export function createLoginController({ request, onState = () => {}, onStarted }
     respond(answer) {
       if (state.phase !== 'prompt') return Promise.resolve(false);
       return run(async () => {
-        const response = send({ type: 'post_auth_message_response', response: answer }); answer = '';
+        const response = send({ type: 'post_auth_message_response', response: selectorPrompt(state) ? 'password' : answer }); answer = '';
         state.message = 'Checking…'; await notify();
+        return advance(await response);
+      });
+    },
+    selectFingerprint() {
+      if (!selectorPrompt(state) || state.busy) return Promise.resolve(false);
+      return run(async () => {
+        const response = send({ type: 'post_auth_message_response', response: 'fingerprint' });
+        state.message = 'Waiting for fingerprint…'; await notify();
         return advance(await response);
       });
     },

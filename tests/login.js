@@ -1,6 +1,6 @@
 import assert from './assert.js';
 import * as Log from 'Helix/Log';
-import { createLoginController } from '../apps/login-model.js';
+import { createLoginController, METHOD_PROMPT } from '../apps/login-model.js';
 
 export async function test() {
 const session = { name: 'Hyprland', cmd: ['/usr/bin/Hyprland'], env: ['XDG_SESSION_TYPE=wayland'] };
@@ -24,6 +24,7 @@ await controller.respond('fixture-password');
 assert.equal(controller.state.secret, false, 'Visible prompts can be answered without masking');
 await controller.respond('alice');
 assert.equal(controller.state.secret, true, 'A later secret prompt restores masking');
+assert.equal(await controller.selectFingerprint(), false, 'Only the selector Password prompt accepts Right');
 assert.equal(handoff.length, 0, 'Additional PAM prompts never start a session early');
 await controller.respond('123456');
 assert.deepEqual(requests.at(-1), { type: 'start_session',
@@ -32,6 +33,23 @@ assert.deepEqual(requests.at(-1), { type: 'start_session',
 assert.equal(controller.state.phase, 'started');
 assert.deepEqual(handoff, ['released and exited']);
 assert(!JSON.stringify(states).includes('fixture-password'), 'Credentials never enter display state');
+assert(!JSON.stringify(states).includes('fingerprint'), 'The method choice never enters display state');
+
+const routeRequests = [];
+const routed = createLoginController({ request: async text => {
+  const value = JSON.parse(text); routeRequests.push(value);
+  return value.type === 'create_session' ? { type: 'auth_message', auth_message_type: 'secret', auth_message: METHOD_PROMPT }
+    : value.response === 'fingerprint' ? { type: 'auth_message', auth_message_type: 'info', auth_message: 'Place your finger on the reader' }
+    : { type: 'error', error_type: 'auth_error' };
+} });
+await routed.begin('alice', session);
+assert.equal(routed.state.phase, 'prompt', 'Method is the first editable challenge');
+await routed.respond('wrong');
+assert.equal(routeRequests.some(value => value.response === 'fingerprint'), false,
+  'Wrong password does not choose fingerprint');
+await routed.begin('alice', session);
+assert.equal(await routed.selectFingerprint(), false, 'A fingerprint request waits for its greetd reply');
+assert(routeRequests.some(value => value.type === 'post_auth_message_response' && value.response === 'fingerprint'));
 
 const failures = [];
 const failed = createLoginController({ request: async text => {

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { setTimeout as delay } from 'node:timers/promises';
 import { SourceTextModule, SyntheticModule } from 'node:vm';
-import { createLoginController } from '../apps/login-model.js';
+import { createLoginController, METHOD_PROMPT } from '../apps/login-model.js';
 
 // Load the production greeter with its Koya/Helix imports replaced at the
 // module boundary. The UI is inert; button callbacks and greetd requests are
@@ -11,9 +11,12 @@ let nextId = 0;
 const id = () => `element-${++nextId}`;
 const controls = new Map(), names = new Map(), labels = new Map(), inputs = new Map(), requests = [], sessionsSeen = [], wallpapersSeen = [];
 let remembered = 'alice';
+let optIn = true;
 let refuseAnswer = false;
 let fingerprintTimeout = false, finishFingerprint, fingerprintAnswered = false;
+let rightScan = false;
 let holdStartSession = false, finishStartSession, closeCount = 0;
+let keyDown;
 const focused = [];
 const input = options => {
   let value = '';
@@ -51,10 +54,22 @@ const modules = {
     request: async text => {
       const request = JSON.parse(text); requests.push(request);
       if (request.type === 'start_session' && holdStartSession) return new Promise(resolve => { finishStartSession = resolve; });
+      if (rightScan) {
+        if (request.type === 'create_session') return { type: 'auth_message', auth_message_type: 'secret', auth_message: METHOD_PROMPT };
+        if (request.type === 'post_auth_message_response' && request.response === 'password')
+          return { type: 'auth_message', auth_message_type: 'secret', auth_message: 'Password:' };
+        if (request.type === 'post_auth_message_response' && request.response === 'fingerprint')
+          return { type: 'auth_message', auth_message_type: 'info', auth_message: 'Place your finger on the reader' };
+        if (request.type === 'post_auth_message_response' && request.response === null)
+          return new Promise(resolve => { finishFingerprint = resolve; });
+        if (request.type === 'post_auth_message_response') return { type: 'error', error_type: 'auth_error' };
+      }
       return request.type === 'create_session'
-        ? fingerprintTimeout
+        ? optIn ? { type: 'auth_message', auth_message_type: 'secret', auth_message: METHOD_PROMPT } : fingerprintTimeout
           ? { type: 'auth_message', auth_message_type: 'info', auth_message: 'Place your finger on the reader' }
           : { type: 'auth_message', auth_message_type: 'secret', auth_message: 'Password:' }
+        : request.type === 'post_auth_message_response' && request.response === 'password'
+          ? { type: 'auth_message', auth_message_type: 'secret', auth_message: 'Password:' }
         : request.type === 'post_auth_message_response' && fingerprintTimeout
           ? fingerprintAnswered ? { type: 'success' }
             : new Promise(resolve => { fingerprintAnswered = true; finishFingerprint = resolve; })
@@ -63,12 +78,12 @@ const modules = {
           : { type: 'success' };
     }
   },
-  'Helix/Engine': { quit: () => {} }, 'Helix/Event': { on: () => {}, off: () => {} },
+  'Helix/Engine': { quit: () => {} }, 'Helix/Event': { on: (name, callback) => { if (name === 'keyDown') keyDown = callback; }, off: () => {} },
   'Helix/Log': { warn: () => {}, error: () => {} },
-  'Module/process': { getEnv: () => '' },
+  'Module/process': { getEnv: name => name === 'KOYA_GREETER_FINGERPRINT' ? '1' : '' },
   'Koya/Assets': { mount: async () => {} },
   './theme-ui.js': ui,
-  './login-model.js': { createLoginController },
+  './login-model.js': { createLoginController, METHOD_PROMPT },
   './clock-model.js': { clockDefaults: {} },
   './wallpapers.js': { WALLPAPERS: [{ id: 'default' }, { id: 'account' }], isUserWallpaper: () => false, setUserWallpapers: () => {} },
   './wallpaper-surface.js': { configureWallpaper: async options => { wallpapersSeen.push(options.Wallpaper); } },
@@ -113,6 +128,114 @@ await greeter.link(specifier => {
   });
 });
 await greeter.evaluate();
+const right = () => keyDown({ id: 'window', key: 65363 });
+const defaultPassword = await greeter.namespace.createGreeter();
+await controls.get(names.get('greeter-submit'))();
+assert.equal(inputs.get('greeter-answer').disabled, false, 'Password is immediately editable after selecting a user');
+assert.equal(requests.some(value => value.response === 'fingerprint'), false, 'No fingerprint scan starts on selection');
+await inputs.get('greeter-answer').setValue('in-progress');
+await right();
+assert.equal(requests.some(value => value.response === 'fingerprint'), false, 'Right preserves caret navigation in a nonempty password');
+await inputs.get('greeter-answer').setValue('');
+await right();
+assert(requests.some(value => value.type === 'post_auth_message_response' && value.response === 'fingerprint'));
+await defaultPassword.dispose();
+requests.length = 0; sessionsSeen.length = 0;
+optIn = false;
+const stock = await greeter.namespace.createGreeter();
+await controls.get(names.get('greeter-submit'))();
+await right();
+assert.equal(requests.some(value => value.response === 'fingerprint'), false, 'Stock greetd never receives the marker');
+assert.equal(labels.get(names.get('greeter-status')), '', 'Stock service shows no fingerprint hint');
+await stock.dispose();
+requests.length = 0; sessionsSeen.length = 0; optIn = true;
+rightScan = true;
+const wrong = await greeter.namespace.createGreeter();
+await controls.get(names.get('greeter-submit'))();
+await inputs.get('greeter-answer').setValue('wrong-password');
+await inputs.get('greeter-answer').submit();
+assert.equal(requests.some(value => value.response === 'fingerprint'), false, 'Wrong password never starts fingerprint');
+assert.equal(requests.some(value => value.response === null), false, 'Wrong password never reaches scan');
+await wrong.dispose();
+requests.length = 0;
+const literal = await greeter.namespace.createGreeter();
+await controls.get(names.get('greeter-submit'))();
+await inputs.get('greeter-answer').setValue('KOYA_GREETER_FINGERPRINT_V1:4dce7a6f-16d6-4299-b7e2-975addde31b8');
+await inputs.get('greeter-answer').submit();
+assert.equal(requests.some(value => value.response === 'fingerprint'), false, 'Typed legacy marker selects no scan');
+assert.deepEqual(requests.slice(1, 3).map(value => value.response),
+  ['password', 'KOYA_GREETER_FINGERPRINT_V1:4dce7a6f-16d6-4299-b7e2-975addde31b8']);
+await literal.dispose();
+requests.length = 0; finishFingerprint = null;
+const scan = await greeter.namespace.createGreeter();
+await controls.get(names.get('greeter-submit'))();
+const pendingScan = right();
+for (let attempts = 0; !finishFingerprint && attempts < 20; attempts++) await delay(0);
+assert.equal(typeof finishFingerprint, 'function', 'Right starts the real scan after the marker');
+assert.equal(requests.filter(value => value.response === 'fingerprint').length, 1);
+const pendingBackFromScan = controls.get(names.get('greeter-back'))();
+finishFingerprint({ type: 'success' });
+await pendingScan; await pendingBackFromScan;
+assert.equal(requests.some(value => value.type === 'start_session'), false, 'Back during scan cancels before session start');
+assert.equal(requests.at(-1).type, 'cancel_session');
+await scan.dispose();
+requests.length = 0; finishFingerprint = null; rightScan = false; optIn = false; sessionsSeen.length = 0;
+
+// A slow field clear must not let a later key choose the method first.
+const pauseNextClear = field => {
+  const originalSetValue = field.setValue;
+  let releaseClear, clearStarted;
+  const entered = new Promise(resolve => { clearStarted = resolve; });
+  field.setValue = async next => {
+    await originalSetValue(next);
+    if (next === '' && !releaseClear) await new Promise(resolve => { releaseClear = resolve; clearStarted(); });
+  };
+  return { entered, release: () => releaseClear() };
+};
+optIn = true;
+const firstChoice = await greeter.namespace.createGreeter();
+await controls.get(names.get('greeter-submit'))();
+const choiceAnswer = inputs.get('greeter-answer'), choiceClear = pauseNextClear(choiceAnswer);
+await choiceAnswer.setValue('first-password');
+const pendingFirstChoice = choiceAnswer.submit();
+await choiceClear.entered;
+await right();
+const pendingSecondChoice = choiceAnswer.submit();
+choiceClear.release();
+await pendingFirstChoice; await pendingSecondChoice;
+assert.deepEqual(requests.filter(value => value.type === 'post_auth_message_response').map(value => value.response),
+  ['password', 'first-password'], 'the first Enter wins over Right and a second Enter during field clear');
+await firstChoice.dispose();
+requests.length = 0;
+
+const cancelledChoice = await greeter.namespace.createGreeter();
+await controls.get(names.get('greeter-submit'))();
+const backChoiceAnswer = inputs.get('greeter-answer'), backChoiceClear = pauseNextClear(backChoiceAnswer);
+await backChoiceAnswer.setValue('cancelled-password');
+const pendingBackChoice = backChoiceAnswer.submit();
+await backChoiceClear.entered;
+await controls.get(names.get('greeter-back'))();
+backChoiceClear.release(); await pendingBackChoice;
+assert.equal(requests.some(value => value.type === 'post_auth_message_response'), false,
+  'Back cancels a method choice still waiting for field clear');
+await controls.get(names.get('greeter-submit'))();
+assert.equal(requests.filter(value => value.type === 'post_auth_message_response').length, 0,
+  'the cancelled password does not carry into a new conversation');
+await cancelledChoice.dispose();
+requests.length = 0;
+
+const disposedChoice = await greeter.namespace.createGreeter();
+await controls.get(names.get('greeter-submit'))();
+const disposeChoiceAnswer = inputs.get('greeter-answer'), disposeChoiceClear = pauseNextClear(disposeChoiceAnswer);
+await disposeChoiceAnswer.setValue('disposed-password');
+const pendingDisposedChoice = disposeChoiceAnswer.submit();
+await disposeChoiceClear.entered;
+const pendingChoiceDispose = disposedChoice.dispose();
+disposeChoiceClear.release(); await pendingDisposedChoice; await pendingChoiceDispose;
+assert.equal(requests.some(value => value.type === 'post_auth_message_response'), false,
+  'Disposal cancels a method choice still waiting for field clear');
+requests.length = 0; sessionsSeen.length = 0; optIn = false;
+
 const instance = await greeter.namespace.createGreeter();
 assert.deepEqual(sessionsSeen, ['alice'], 'startup recalls the returning account session');
 assert.equal(wallpapersSeen[0], 'account', 'startup shows the returning account wallpaper');
