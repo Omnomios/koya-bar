@@ -12,14 +12,16 @@ const id = () => `element-${++nextId}`;
 const controls = new Map(), names = new Map(), labels = new Map(), inputs = new Map(), requests = [], sessionsSeen = [], wallpapersSeen = [];
 let remembered = 'alice';
 let refuseAnswer = false;
-let fingerprintTimeout = false, finishFingerprint;
+let fingerprintTimeout = false, finishFingerprint, fingerprintAnswered = false;
+let holdStartSession = false, finishStartSession, closeCount = 0;
+const focused = [];
 const input = options => {
   let value = '';
   const field = {
-    master: { id: id() }, getValue: () => value,
+    master: { id: id() }, getValue: () => value, submit: () => options.onSubmit(),
     setValue: async next => { value = next; options.onInput?.(next); },
-    setDisabled: async () => {}, setPlaceholder: async () => {},
-    setRevealed: async () => {}, focus: async () => {}, destroy: async () => {}
+    setDisabled: async next => { field.disabled = next; }, setPlaceholder: async () => {},
+    setRevealed: async () => {}, focus: async () => { focused.push(options.id); }, destroy: async () => {}
   };
   inputs.set(options.id, field);
   return field;
@@ -44,16 +46,18 @@ const modules = {
     setUiScaling: async () => ({ width: 1600, height: 900 }), focusWindow: async () => {}
   },
   'Module/login': {
-    sessions: () => sessions, lastUser: () => remembered, close: () => {},
+    sessions: () => sessions, lastUser: () => remembered, close: () => { closeCount++; },
     userPreferences: name => name === 'alice' ? JSON.stringify({ GreeterWallpaper: true, Wallpaper: 'account' }) : null,
     request: async text => {
       const request = JSON.parse(text); requests.push(request);
+      if (request.type === 'start_session' && holdStartSession) return new Promise(resolve => { finishStartSession = resolve; });
       return request.type === 'create_session'
         ? fingerprintTimeout
           ? { type: 'auth_message', auth_message_type: 'info', auth_message: 'Place your finger on the reader' }
           : { type: 'auth_message', auth_message_type: 'secret', auth_message: 'Password:' }
         : request.type === 'post_auth_message_response' && fingerprintTimeout
-          ? new Promise(resolve => { finishFingerprint = resolve; })
+          ? fingerprintAnswered ? { type: 'success' }
+            : new Promise(resolve => { fingerprintAnswered = true; finishFingerprint = resolve; })
         : request.type === 'post_auth_message_response' && refuseAnswer
           ? { type: 'error', error_type: 'auth_error' }
           : { type: 'success' };
@@ -142,11 +146,16 @@ assert.deepEqual(requests.at(-1), { type: 'create_session', username: 'alice' },
 await refused.dispose();
 
 // Fingerprint PAM can show information, then time out without a password prompt.
-requests.length = 0; refuseAnswer = false; fingerprintTimeout = true;
+requests.length = 0; refuseAnswer = false; fingerprintTimeout = true; fingerprintAnswered = false;
 const fingerprint = await greeter.namespace.createGreeter();
 const pendingFingerprint = controls.get(names.get('greeter-submit'))();
 for (let attempts = 0; !finishFingerprint && attempts < 20; attempts++) await delay(0);
 assert.equal(typeof finishFingerprint, 'function', 'fingerprint information waits for PAM response');
+assert.equal(inputs.get('greeter-answer').disabled, false, 'password field is editable while fingerprint PAM waits');
+assert.equal(focused.at(-1), 'greeter-answer', 'password field receives keyboard focus while fingerprint PAM waits');
+await inputs.get('greeter-answer').setValue('early-password');
+await inputs.get('greeter-answer').submit();
+assert.equal(requests.length, 2, 'Enter queues the password without sending it during fingerprint PAM');
 assert.deepEqual(requests.slice(0, 2), [
   { type: 'create_session', username: 'alice' },
   { type: 'post_auth_message_response', response: null }
@@ -165,6 +174,145 @@ await controls.get(names.get('greeter-submit'))();
 assert.deepEqual(requests.at(-1), { type: 'create_session', username: 'alice' },
   'Continue restarts authentication after a fingerprint timeout');
 await fingerprint.dispose();
+
+// A password fallback consumes the queued answer only at a matching secret prompt.
+requests.length = 0; fingerprintTimeout = true; fingerprintAnswered = false;
+const fallback = await greeter.namespace.createGreeter();
+const pendingFallback = controls.get(names.get('greeter-submit'))();
+for (let attempts = 0; !finishFingerprint && attempts < 20; attempts++) await delay(0);
+await inputs.get('greeter-answer').setValue('early-password');
+await inputs.get('greeter-answer').submit();
+assert.equal(requests.length, 2);
+finishFingerprint({ type: 'auth_message', auth_message_type: 'secret', auth_message: 'Password:' });
+await pendingFallback;
+assert.deepEqual(requests[2], { type: 'post_auth_message_response', response: 'early-password' });
+assert.equal(requests.filter(request => request.type === 'start_session').length, 1);
+await fallback.dispose();
+
+requests.length = 0; fingerprintAnswered = false; finishFingerprint = null;
+const typing = await greeter.namespace.createGreeter();
+const pendingTyping = controls.get(names.get('greeter-submit'))();
+for (let attempts = 0; !finishFingerprint && attempts < 20; attempts++) await delay(0);
+await inputs.get('greeter-answer').setValue('still-typing');
+finishFingerprint({ type: 'auth_message', auth_message_type: 'secret', auth_message: 'Password:' });
+await pendingTyping;
+assert.equal(inputs.get('greeter-answer').getValue(), 'still-typing',
+  'a password prompt does not erase text typed during the fingerprint wait');
+assert.equal(requests.length, 2, 'typing without Enter does not submit a password');
+await inputs.get('greeter-answer').submit();
+assert.deepEqual(requests[2], { type: 'post_auth_message_response', response: 'still-typing' });
+await typing.dispose();
+
+requests.length = 0; fingerprintAnswered = false; finishFingerprint = null;
+const code = await greeter.namespace.createGreeter();
+const pendingCode = controls.get(names.get('greeter-submit'))();
+for (let attempts = 0; !finishFingerprint && attempts < 20; attempts++) await delay(0);
+await inputs.get('greeter-answer').setValue('early-password');
+await inputs.get('greeter-answer').submit();
+finishFingerprint({ type: 'auth_message', auth_message_type: 'secret', auth_message: 'Verification code:' });
+await pendingCode;
+assert.equal(requests.length, 2, 'queued password is never sent to a verification code prompt');
+assert.equal(inputs.get('greeter-answer').getValue(), '', 'unrelated prompt clears the queued answer field');
+await code.dispose();
+
+requests.length = 0; fingerprintAnswered = false; finishFingerprint = null;
+const biometric = await greeter.namespace.createGreeter();
+const pendingBiometric = controls.get(names.get('greeter-submit'))();
+for (let attempts = 0; !finishFingerprint && attempts < 20; attempts++) await delay(0);
+await inputs.get('greeter-answer').setValue('early-password');
+await inputs.get('greeter-answer').submit();
+finishFingerprint({ type: 'success' });
+await pendingBiometric;
+assert.equal(requests.filter(request => request.type === 'post_auth_message_response').length, 1,
+  'biometric success never sends the queued password');
+assert.equal(requests.filter(request => request.type === 'start_session').length, 1);
+await biometric.dispose();
+
+requests.length = 0; fingerprintAnswered = false; finishFingerprint = null;
+const backed = await greeter.namespace.createGreeter();
+const pendingBack = controls.get(names.get('greeter-submit'))();
+for (let attempts = 0; !finishFingerprint && attempts < 20; attempts++) await delay(0);
+await inputs.get('greeter-answer').setValue('early-password');
+await inputs.get('greeter-answer').submit();
+await controls.get(names.get('greeter-back'))();
+finishFingerprint({ type: 'success' });
+await pendingBack;
+assert.equal(requests.filter(request => request.type === 'start_session').length, 0,
+  'back while greetd is in flight cancels after its reply, before session start');
+assert.equal(requests.at(-1).type, 'cancel_session');
+await backed.dispose();
+
+requests.length = 0; fingerprintAnswered = false; finishFingerprint = null;
+const slowBack = await greeter.namespace.createGreeter();
+const pendingSlowBack = controls.get(names.get('greeter-submit'))();
+for (let attempts = 0; !finishFingerprint && attempts < 20; attempts++) await delay(0);
+const backAnswer = inputs.get('greeter-answer'), originalSetValue = backAnswer.setValue;
+let releaseBackClear, backClearStarted;
+const backClearEntered = new Promise(resolve => { backClearStarted = resolve; });
+backAnswer.setValue = async next => {
+  if (next === '' && !releaseBackClear) {
+    await new Promise(resolve => { releaseBackClear = resolve; backClearStarted(); });
+  }
+  return originalSetValue(next);
+};
+const pendingSlowClear = controls.get(names.get('greeter-back'))();
+await backClearEntered;
+finishFingerprint({ type: 'success' });
+await pendingSlowBack;
+assert.equal(requests.filter(request => request.type === 'start_session').length, 0,
+  'Back requests cancellation before waiting for the answer field to clear');
+releaseBackClear(); await pendingSlowClear; await slowBack.dispose();
+
+requests.length = 0; fingerprintAnswered = false; finishFingerprint = null;
+const startingDispose = await greeter.namespace.createGreeter();
+const pendingStartingDispose = controls.get(names.get('greeter-submit'))();
+for (let attempts = 0; !finishFingerprint && attempts < 20; attempts++) await delay(0);
+const startingAnswer = inputs.get('greeter-answer'), startingSetValue = startingAnswer.setValue;
+let releaseStartingClear, startingClearStarted;
+const startingClearEntered = new Promise(resolve => { startingClearStarted = resolve; });
+startingAnswer.setValue = async next => {
+  if (next === '' && !releaseStartingClear) await new Promise(resolve => { releaseStartingClear = resolve; startingClearStarted(); });
+  return startingSetValue(next);
+};
+finishFingerprint({ type: 'success' });
+await startingClearEntered;
+const closedBeforeStartingClear = closeCount;
+const pendingStartingClear = startingDispose.dispose();
+assert.equal(closeCount, closedBeforeStartingClear, 'Disposal keeps the transport open until starting cancellation completes');
+releaseStartingClear(); await pendingStartingClear; await pendingStartingDispose;
+assert.equal(requests.filter(request => request.type === 'start_session').length, 0,
+  'Disposal during the starting UI update cancels before start_session');
+assert.equal(requests.at(-1).type, 'cancel_session');
+assert.equal(closeCount, closedBeforeStartingClear + 1);
+
+requests.length = 0; fingerprintAnswered = false; finishFingerprint = null; finishStartSession = null; holdStartSession = true;
+const sentDispose = await greeter.namespace.createGreeter();
+const pendingSentDispose = controls.get(names.get('greeter-submit'))();
+for (let attempts = 0; !finishFingerprint && attempts < 20; attempts++) await delay(0);
+finishFingerprint({ type: 'success' });
+for (let attempts = 0; !finishStartSession && attempts < 20; attempts++) await delay(0);
+assert.equal(typeof finishStartSession, 'function');
+const closedBeforeStartReply = closeCount;
+await sentDispose.dispose();
+assert.equal(closeCount, closedBeforeStartReply, 'Disposal leaves the transport open during an in-flight start_session');
+assert.equal(requests.filter(request => request.type === 'cancel_session').length, 0);
+finishStartSession({ type: 'success' }); await pendingSentDispose;
+assert.equal(closeCount, closedBeforeStartReply + 1, 'The successful handoff disposes after start_session replies');
+holdStartSession = false;
+
+requests.length = 0; fingerprintAnswered = false; finishFingerprint = null;
+const removed = await greeter.namespace.createGreeter();
+const pendingRemoved = controls.get(names.get('greeter-submit'))();
+for (let attempts = 0; !finishFingerprint && attempts < 20; attempts++) await delay(0);
+await inputs.get('greeter-answer').setValue('early-password');
+await inputs.get('greeter-answer').submit();
+await removed.dispose();
+finishFingerprint({ type: 'success' });
+await pendingRemoved;
+assert.equal(requests.filter(request => request.type === 'start_session').length, 0,
+  'a stale fingerprint reply after disposal cannot start a session');
+assert.equal(requests.at(-1).type, 'cancel_session');
+fingerprintTimeout = false; finishFingerprint = null;
 
 // Without a remembered account, the same Continue path accepts a typed name.
 remembered = ''; requests.length = 0; sessionsSeen.length = 0; refuseAnswer = false;

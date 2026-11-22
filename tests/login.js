@@ -81,6 +81,41 @@ const cancelled = createLoginController({ request: async text => {
 await cancelled.begin('alice', session); await cancelled.cancel();
 assert.equal(cancelRequests.at(-1).type, 'cancel_session');
 assert.equal(cancelled.state.phase, 'username');
+const startingRequests = [];
+let releaseStarting, startingEntered;
+const startingNotified = new Promise(resolve => { startingEntered = resolve; });
+const starting = createLoginController({
+  request: async text => {
+    const value = JSON.parse(text); startingRequests.push(value);
+    return { type: 'success' };
+  },
+  onState: state => state.phase === 'starting'
+    ? new Promise(resolve => { releaseStarting = resolve; startingEntered(); }) : undefined,
+  onStarted: () => assert.fail('Cancellation during starting notification must not hand off')
+});
+const pendingStarting = starting.begin('alice', session);
+await startingNotified;
+await starting.cancel();
+releaseStarting(); await pendingStarting;
+assert.deepEqual(startingRequests.map(value => value.type), ['create_session', 'cancel_session'],
+  'Cancellation during the starting notification precedes start_session');
+assert.equal(starting.state.phase, 'username');
+const sentRequests = [];
+let finishStart, sentStarts = 0;
+const sent = createLoginController({
+  request: async text => {
+    const value = JSON.parse(text); sentRequests.push(value);
+    return value.type === 'start_session' ? new Promise(resolve => { finishStart = resolve; }) : { type: 'success' };
+  }, onStarted: () => { sentStarts++; }
+});
+const pendingSent = sent.begin('alice', session);
+for (let attempts = 0; !finishStart && attempts < 20; attempts++) await Promise.resolve();
+assert.equal(typeof finishStart, 'function');
+await sent.cancel();
+assert.deepEqual(sentRequests.map(value => value.type), ['create_session', 'start_session'],
+  'Cancellation after start_session is sent cannot send cancel_session');
+finishStart({ type: 'success' }); await pendingSent;
+assert.equal(sentStarts, 1, 'A completed start still performs its handoff');
 // Fingerprint PAM conversations can finish without ever asking for a secret.
 const biometricStates = [], biometricRequests = [];
 const biometricReplies = [

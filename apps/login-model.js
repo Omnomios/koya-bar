@@ -5,7 +5,7 @@ export function createLoginController({ request, onState = () => {}, onStarted }
   // rejected the answer, so the same account can simply try again. `notice`: text PAM
   // sent alongside its prompts (info or error messages), for display.
   const state = { phase: 'username', username: '', prompt: '', secret: true, message: 'Enter your user name.', busy: false, error: false, refused: false, notice: '' };
-  let session, authenticating = false;
+  let session, authenticating = false, cancelRequested = false, startSessionSent = false;
   const notify = () => onState({ ...state });
   const send = value => request(JSON.stringify(value));
   const cancel = async () => {
@@ -16,16 +16,31 @@ export function createLoginController({ request, onState = () => {}, onStarted }
   };
   const advance = async reply => {
     for (;;) {
+      // A back action can arrive while a greetd request is in flight. Wait for
+      // its reply before cancelling the one conversation; never start a session.
+      if (cancelRequested) {
+        cancelRequested = false; await cancel();
+        state.phase = 'username'; state.prompt = ''; state.notice = ''; state.message = 'Enter your user name.';
+        return false;
+      }
       if (reply?.type === 'error') {
         const error = new Error(reply.error_type === 'auth_error' ? 'Authentication failed. Try again.' : reply.description || 'Login failed.');
         error.refused = reply.error_type === 'auth_error'; throw error;
       }
       if (reply?.type === 'success') {
         state.phase = 'starting'; state.message = 'Starting ' + session.name + '…'; await notify();
+        if (cancelRequested) {
+          cancelRequested = false; await cancel();
+          state.phase = 'username'; state.prompt = ''; state.notice = ''; state.message = 'Enter your user name.';
+          return false;
+        }
         // greetd connects the session's output to its VT. Keep compositor and
         // desktop logs in the journal during the graphical handoff.
         const cmd = ['/usr/bin/systemd-cat', '--identifier=koya-session', '--', ...session.cmd];
-        const result = await send({ type: 'start_session', cmd, env: session.env });
+        startSessionSent = true;
+        let result;
+        try { result = await send({ type: 'start_session', cmd, env: session.env }); }
+        finally { startSessionSent = false; }
         if (result?.type !== 'success') throw new Error(result?.description || 'Could not start the session.');
         authenticating = false; state.phase = 'started';
         // greetd waits for the greeter to exit. Release raw output before quit.
@@ -58,6 +73,7 @@ export function createLoginController({ request, onState = () => {}, onStarted }
     get state() { return { ...state }; },
     begin(username, selected) {
       if (state.phase !== 'username') return Promise.resolve(false);
+      cancelRequested = false;
       return run(async () => {
         username = username.trim();
         if (!username || username.length > 256 || /[\x00-\x1f\x7f]/.test(username)) throw new Error('Enter a valid user name.');
@@ -82,7 +98,12 @@ export function createLoginController({ request, onState = () => {}, onStarted }
       session = selected; return true;
     },
     cancel() {
+      // Once start_session is sent, greetd may already be launching the
+      // desktop. A cancellation request cannot undo that handoff.
+      if (startSessionSent || state.phase === 'started') return Promise.resolve(false);
+      if (state.busy) { cancelRequested = true; return Promise.resolve(false); }
       return run(async () => {
+        cancelRequested = false;
         await cancel(); state.phase = 'username'; state.prompt = ''; state.notice = ''; state.message = 'Enter your user name.';
         return false;
       });

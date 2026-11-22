@@ -99,16 +99,29 @@ export async function createGreeter({ preview = false, surface = 'raw' } = {}) {
   const { win, size } = await openWindow(surface);
   let screen, user, answer, avatar, heading, status, actionLabel, feedback, back, chip, chipLabel, list, controller, clockTimer;
   let accountName = '', avatarUser = '';
-  let selected = 0, closed = false, previewComplete = false, promptKey = '', phase = '', listOpen = false, shownStatus = '';
+  let selected = 0, closed = false, disposePending = false, previewComplete = false, promptKey = '', phase = '', listOpen = false, shownStatus = '';
+  // Kept only in this closure until greetd actually asks for a password.
+  let queuedPassword = null;
   const dispose = async () => {
     if (closed) return;
-    closed = true; Event.off('keyDown', key); clearInterval(clockTimer); screen?.stop();
+    // Let the active conversation finish its reply and cancellation before
+    // closing the transport. start_session cannot be undone once sent.
+    if (controller?.state.busy && controller.state.phase !== 'started') {
+      disposePending = true; queuedPassword = null;
+      await controller.cancel();
+      return;
+    }
+    closed = true; queuedPassword = null; Event.off('keyDown', key); clearInterval(clockTimer); screen?.stop();
+    if (['authenticating', 'prompt', 'starting'].includes(controller?.state.phase)) await controller.cancel();
+    await answer?.setValue('');
     await Promise.all([user?.destroy(), answer?.destroy(), avatar?.dispose()]);
     Login.close(); await destroySurface(win);
   };
   const goBack = async () => {
-    if (closed || controller.state.busy || previewComplete || controller.state.phase !== 'prompt') return;
-    await answer.setValue(''); await controller.cancel();
+    if (closed || previewComplete || !['prompt', 'authenticating'].includes(controller.state.phase)) return;
+    queuedPassword = null;
+    const cancellation = controller.cancel();
+    await answer.setValue(''); await cancellation;
   };
   const key = async event => {
     if (event.id !== win || ![1, 65307].includes(Number(event.key))) return;
@@ -129,26 +142,28 @@ export async function createGreeter({ preview = false, surface = 'raw' } = {}) {
   const setAvatar = name => { avatarUser = name.trim(); avatar.setUser(avatarUser); };
   const render = async state => {
     if (closed) return;
-    const asking = state.phase === 'username', challenge = state.phase === 'prompt';
+    const asking = state.phase === 'username', challenge = state.phase === 'prompt', waiting = state.phase === 'authenticating';
+    const passwordPrompt = challenge && state.secret && /^password:?\s*$/i.test(state.prompt);
+    if (!waiting && !passwordPrompt) queuedPassword = null;
     const nextPrompt = state.phase + ':' + state.prompt + ':' + state.secret;
     if (nextPrompt !== promptKey) {
       promptKey = nextPrompt;
-      await Promise.all([answer.setValue(''), answer.setRevealed(challenge && !state.secret), answer.setPlaceholder(placeholder(state.prompt))]);
+      await Promise.all([...(passwordPrompt ? [] : [answer.setValue('')]), answer.setRevealed(challenge && !state.secret), answer.setPlaceholder(placeholder(state.prompt))]);
     }
     if (closed) return;
     // Failures come back to the account step. Answering, the line carries what
     // PAM said and any prompt other than the password (a verification code).
     const failed = asking && state.error;
     const message = previewComplete ? 'Preview complete' : !sessions.length ? 'No Wayland sessions installed' : failed ? state.message
-      : challenge ? [state.notice, /^password:?\s*$/i.test(state.prompt) ? '' : state.prompt].filter(Boolean).join(' · ')
+      : challenge ? [state.notice, passwordPrompt ? '' : state.prompt].filter(Boolean).join(' · ')
       : state.busy ? state.notice || state.message : '';
     const nextPhase = asking ? 'account' : 'answer';
     await Promise.all([
-      user.setDisabled(state.busy || !asking), answer.setDisabled(state.busy || !challenge),
+      user.setDisabled(state.busy || !asking), answer.setDisabled(!waiting && (state.busy || !challenge)),
       UI.setTextString(win, heading, asking ? 'Sign in' : avatarUser === state.username ? accountName || state.username : state.username),
       UI.setTextString(win, status, message), UI.setTextColour(win, status, failed || !sessions.length ? TEXT.accent : TEXT.secondary),
       UI.setTextString(win, actionLabel, previewComplete ? 'Restart preview' : asking ? 'Continue' : 'Sign in'),
-      UI.setEnabled(win, back, challenge), UI.setHitTarget(win, chip, !state.busy && (asking || challenge)),
+      UI.setEnabled(win, back, challenge || waiting), UI.setHitTarget(win, chip, !state.busy && (asking || challenge)),
       state.busy ? feedback.begin() : feedback.end()
     ]);
     // The field swaps: the account slides out, the answer slides in (and back).
@@ -164,8 +179,15 @@ export async function createGreeter({ preview = false, surface = 'raw' } = {}) {
     }
     if (failed && message !== shownStatus) screen.play(screen.card, presets.shake());
     shownStatus = message;
-    if (closed || state.busy) return;
-    if (asking) await user.focus(); else if (challenge) await answer.focus();
+    if (closed) return;
+    if (waiting || (challenge && !state.busy)) await answer.focus();
+    else if (asking && !state.busy) await user.focus();
+    if (passwordPrompt && !state.busy && queuedPassword !== null) {
+      let password = queuedPassword; queuedPassword = null;
+      await answer.setValue('');
+      const response = controller.respond(password); password = '';
+      await response;
+    }
   };
   const newController = () => createLoginController({
     request: preview ? async text => {
@@ -175,7 +197,10 @@ export async function createGreeter({ preview = false, surface = 'raw' } = {}) {
         : { type: 'error', error_type: 'auth_error' };
       return { type: 'success' };
     } : Login.request,
-    onState: render,
+    onState: async state => {
+      await render(state);
+      if (disposePending && !state.busy) await dispose();
+    },
     onStarted: async () => {
       if (typeof Login.rememberUser === 'function') Login.rememberUser(controller.state.username);
       if (/\.desktop$/.test(sessions[selected]?.id || '')) await accounts.setSession(controller.state.username, sessionName(sessions[selected])).catch(() => {});
@@ -184,7 +209,13 @@ export async function createGreeter({ preview = false, surface = 'raw' } = {}) {
     }
   });
   const submit = async () => {
-    if (closed || controller.state.busy) return;
+    if (closed) return;
+    if (controller.state.phase === 'authenticating' && controller.state.busy) {
+      queuedPassword = answer.getValue();
+      await answer.setValue('');
+      return;
+    }
+    if (controller.state.busy) return;
     if (listOpen) await showList(false);
     if (previewComplete) { previewComplete = false; phase = ''; controller = newController(); await render(controller.state); return; }
     if (controller.state.phase === 'username') {
