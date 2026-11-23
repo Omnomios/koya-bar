@@ -111,3 +111,40 @@ PY
 c++ -std=c++17 -Wall -Wextra -Werror -I"$work/include" \
   "$root/tests/greeter-pam-route.cpp" -l:libpam.so.0 -o "$work/fixture"
 KOYA_LOG="$work/log" "$work/fixture" "$work/pam" "$work/log"
+cat > "$work/approved/greetd" <<'POLICY'
+auth include base-auth
+account include base-account
+password include base-password
+session include base-session
+POLICY
+cat > "$work/approved/base-auth" <<'POLICY'
+auth required pam_unix.so nullok
+auth required pam_nologin.so
+auth required pam_env.so
+-auth optional pam_gnome_keyring.so
+-auth optional pam_kwallet5.so
+POLICY
+c++ -std=c++17 -Wall -Wextra -Werror -shared -fPIC -I"$work/include" \
+  -DKOYA_GREETD_POLICY="\"$work/approved/greetd\"" -DKOYA_PAM_DIR="\"$work/approved/\"" \
+  -DKOYA_PAM_VENDOR_DIR="\"$work/approved/\"" \
+  "$root/native/modules/pam-koya-greeter.cpp" -o "$work/route.so"
+python3 - "$root" "$work" <<'PY'
+import pathlib, re, sys
+root, work = map(pathlib.Path, sys.argv[1:])
+source = {
+    'koya-greeter': (root / 'auth/koya-greeter-alpine').read_text(),
+    'greetd': (work / 'approved/greetd').read_text(),
+    'base-auth': (work / 'approved/base-auth').read_text(),
+    'base-account': 'account required pam_unix.so\n',
+    'base-password': 'password required pam_unix.so\n',
+    'base-session': 'session required pam_unix.so\n',
+}
+for name, policy in source.items():
+    policy = re.sub(r'\binclude (greetd|base-auth|base-account|base-password|base-session)\b',
+                    lambda m: 'include ' + str(work / 'pam' / m[1]), policy)
+    policy = policy.replace('pam_koya_greeter.so', str(work / 'route.so'))
+    policy = re.sub(r'\bpam_([a-z0-9_]+)\.so\b',
+                    lambda m: str(work / 'mock.so') + ' ' + ('fingerprint' if m[1] == 'fprintd' else m[1]), policy)
+    (work / 'pam' / name).write_text(policy)
+PY
+KOYA_LOG="$work/log" "$work/fixture" "$work/pam" "$work/log" alpine

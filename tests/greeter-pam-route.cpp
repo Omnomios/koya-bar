@@ -48,14 +48,20 @@ static void attempt(const char *dir, const char *log, const char *method, const 
     pam_end(handle, PAM_SUCCESS);
 }
 int main(int argc, char **argv) {
-    assert(argc == 3);
+    assert(argc == 3 || argc == 4);
+    const bool alpine = argc == 4 && !std::strcmp(argv[3], "alpine");
     attempt(argv[1], argv[2], "password", "correct", "success", "allow", PAM_SUCCESS, 0);
     attempt(argv[1], argv[2], "password", "wrong", "success", "allow", PAM_AUTH_ERR, 0);
     attempt(argv[1], argv[2], "fingerprint", "", "success", "allow", PAM_SUCCESS, 1);
     attempt(argv[1], argv[2], "fingerprint", "", "ignore", "allow", PAM_PERM_DENIED, 1);
     attempt(argv[1], argv[2], "fingerprint", "", "success", "deny", PAM_SUCCESS, 1);
+    if (alpine) {
+        setenv("KOYA_NOLOGIN_DENY", "1", 1);
+        attempt(argv[1], argv[2], "fingerprint", "", "success", "allow", PAM_AUTH_ERR, 0);
+        unsetenv("KOYA_NOLOGIN_DENY");
+    }
     attempt(argv[1], argv[2], "KOYA_GREETER_FINGERPRINT_V1:4dce7a6f-16d6-4299-b7e2-975addde31b8", "", "success", "allow", PAM_AUTH_ERR, 0);
-    const std::string approved = std::string(argv[1]) + "/../approved/system-login";
+    const std::string approved = std::string(argv[1]) + (alpine ? "/../approved/base-auth" : "/../approved/system-login");
     FILE *file = std::fopen(approved.c_str(), "a"); assert(file);
     std::fputs("-AUTH requisite pam_deny.so\n", file); std::fclose(file);
     attempt(argv[1], argv[2], "fingerprint", "", "success", "allow", PAM_AUTH_ERR, 0);

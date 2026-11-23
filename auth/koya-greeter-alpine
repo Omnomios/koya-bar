@@ -1,0 +1,10 @@
+#%PAM-1.0
+# Password uses stock greetd. Fingerprint retains the stock login guards.
+auth [success=3 authinfo_unavail=ignore default=die] pam_koya_greeter.so platform=alpine
+auth requisite pam_nologin.so
+auth requisite pam_env.so
+auth [success=done default=die] pam_fprintd.so max-tries=3 timeout=10
+auth include greetd
+account include greetd
+password include greetd
+session include greetd

@@ -14,6 +14,7 @@ extern "C" int pam_sm_authenticate(pam_handle_t *handle, int, int argc, const ch
         return !std::strcmp(std::getenv("KOYA_SCAN"), "ignore") ? PAM_IGNORE : PAM_SUCCESS;
     }
     if (!std::strcmp(role, "systemd_home")) return PAM_IGNORE;
+    if (!std::strcmp(role, "nologin") && std::getenv("KOYA_NOLOGIN_DENY")) return PAM_AUTH_ERR;
     if (!std::strcmp(role, "securetty") || !std::strcmp(role, "nologin")) return PAM_IGNORE;
     if (!std::strcmp(role, "faillock") && argc > 1 && !std::strcmp(argv[1], "authfail")) return PAM_AUTH_ERR;
     if (!std::strcmp(role, "unix")) {

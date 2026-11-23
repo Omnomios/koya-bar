@@ -2,7 +2,7 @@
 // one conversation; passwords are supplied only in response to its prompts.
 export const METHOD_PROMPT = 'Koya authentication method v1:';
 const selectorPrompt = state => state.phase === 'prompt' && state.secret && state.prompt === METHOD_PROMPT;
-export function createLoginController({ request, onState = () => {}, onStarted }) {
+export function createLoginController({ request, onState = () => {}, onStarted, journalAvailable = true }) {
   // `error`: the last attempt failed (message says why); `refused`: PAM
   // rejected the answer, so the same account can simply try again. `notice`: text PAM
   // sent alongside its prompts (info or error messages), for display.
@@ -36,9 +36,11 @@ export function createLoginController({ request, onState = () => {}, onStarted }
           state.phase = 'username'; state.prompt = ''; state.notice = ''; state.message = 'Enter your user name.';
           return false;
         }
-        // greetd connects the session's output to its VT. Keep compositor and
-        // desktop logs in the journal during the graphical handoff.
-        const cmd = ['/usr/bin/systemd-cat', '--identifier=koya-session', '--', ...session.cmd];
+        // Use the journal when the greeter's root has systemd-cat. Alpine's
+        // miniroot starts the desktop directly through greetd.
+        const cmd = journalAvailable
+          ? ['/usr/bin/systemd-cat', '--identifier=koya-session', '--', ...session.cmd]
+          : session.cmd;
         startSessionSent = true;
         let result;
         try { result = await send({ type: 'start_session', cmd, env: session.env }); }

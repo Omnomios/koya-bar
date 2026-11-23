@@ -511,6 +511,15 @@ Arch auth rules in `greetd`, `system-local-login`, `system-login`, or
 to set PAM_TTY; `pam_nologin` may return PAM_IGNORE when no lockout applies.
 The installer preserves custom greetd service choices
 and does not restart greetd or change `system-auth`.
+Package hooks may run `install-fingerprint.py --package-activate --platform arch`
+or `--platform alpine`. Activation requires the packaged Koya greeter command,
+stock greetd service and reviewed distro PAM auth rules. Alpine v3.23 uses its
+`base-auth` policy from `/etc/pam.d` or `/usr/lib/pam.d`; fingerprint login
+retains `pam_nologin` and `pam_env` before scanning. A custom OpenRC greetd
+startup, missing module, modified policy, or `/usr/local/bin/koya-greeter`
+development command leaves the service unchanged. An exact password-only
+`/etc/pam.d/koya-greeter` from an earlier disable also remains opted out;
+`--greeter` can enable it manually.
 If the older Koya managed fingerprint block is still in `/etc/pam.d/greetd`,
 review and restore that file from `greetd.before-koya-fingerprint` before
 enabling this separate service. The installer will stop without changing it.
@@ -537,7 +546,9 @@ The installer keeps `/etc/pam.d/koya-greeter` as a Koya-owned password-only
 service. All four PAM groups include `greetd`; it has no fingerprint selector or
 `pam_fprintd` rule. A running greetd may still request this service until it is
 restarted. Repeating `--disable` is safe, and `--greeter` restores fingerprint
-support. The installer refuses local changes to either Koya service policy.
+support. Disabling records an opt-out in `/etc/greetd/.koya-fingerprint-disabled`
+so a later package upgrade leaves it disabled. The installer refuses local
+changes to either Koya service policy.
 
 Before merging, verify on the device: add and remove a finger; cancel enrollment
 and retry; unlock with the enrolled finger; ensure an unregistered finger cannot

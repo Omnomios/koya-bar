@@ -200,6 +200,7 @@ export async function createGreeter({ preview = false, surface = 'raw' } = {}) {
     }
   };
   const newController = () => createLoginController({
+    journalAvailable: Process.exists('/usr/bin/systemd-cat'),
     request: preview ? async text => {
       const request = JSON.parse(text);
       if (request.type === 'create_session') return { type: 'auth_message', auth_message_type: 'secret', auth_message: METHOD_PROMPT };

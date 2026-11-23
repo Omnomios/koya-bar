@@ -16,6 +16,7 @@ let refuseAnswer = false;
 let fingerprintTimeout = false, finishFingerprint, fingerprintAnswered = false;
 let rightScan = false;
 let holdStartSession = false, finishStartSession, closeCount = 0;
+let journalAvailable = true;
 let keyDown;
 const focused = [];
 const input = options => {
@@ -80,7 +81,8 @@ const modules = {
   },
   'Helix/Engine': { quit: () => {} }, 'Helix/Event': { on: (name, callback) => { if (name === 'keyDown') keyDown = callback; }, off: () => {} },
   'Helix/Log': { warn: () => {}, error: () => {} },
-  'Module/process': { getEnv: name => name === 'KOYA_GREETER_FINGERPRINT' ? '1' : '' },
+  'Module/process': { getEnv: name => name === 'KOYA_GREETER_FINGERPRINT' ? '1' : '',
+    exists: path => path === '/usr/bin/systemd-cat' && journalAvailable },
   'Koya/Assets': { mount: async () => {} },
   './theme-ui.js': ui,
   './login-model.js': { createLoginController, METHOD_PROMPT },
@@ -236,6 +238,7 @@ assert.equal(requests.some(value => value.type === 'post_auth_message_response')
   'Disposal cancels a method choice still waiting for field clear');
 requests.length = 0; sessionsSeen.length = 0; optIn = false;
 
+journalAvailable = false; // Alpine miniroot has no systemd-cat.
 const instance = await greeter.namespace.createGreeter();
 assert.deepEqual(sessionsSeen, ['alice'], 'startup recalls the returning account session');
 assert.equal(wallpapersSeen[0], 'account', 'startup shows the returning account wallpaper');
@@ -247,9 +250,24 @@ await inputs.get('greeter-answer').setValue('fixture-password');
 await controls.get(names.get('greeter-submit'))();
 assert.deepEqual(requests.at(-2), { type: 'post_auth_message_response', response: 'fixture-password' });
 assert.deepEqual(requests.at(-1), { type: 'start_session',
-  cmd: ['/usr/bin/systemd-cat', '--identifier=koya-session', '--', 'labwc'], env: [] },
-  'recalled session starts through systemd-cat after the password prompt');
+  cmd: ['labwc'], env: [] },
+  'Alpine password login starts the desktop directly');
 await instance.dispose();
+journalAvailable = true;
+
+const alpineRequests = [];
+const alpineFingerprint = createLoginController({
+  request: async text => {
+    const request = JSON.parse(text); alpineRequests.push(request);
+    return request.type === 'create_session'
+      ? { type: 'auth_message', auth_message_type: 'info', auth_message: 'Place your finger on the reader' }
+      : { type: 'success' };
+  },
+  journalAvailable: false, onStarted: async () => {}
+});
+assert.equal(await alpineFingerprint.begin('alice', sessions[1]), true);
+assert.deepEqual(alpineRequests.at(-1), { type: 'start_session', cmd: ['labwc'], env: [] },
+  'Alpine fingerprint login starts the desktop directly');
 
 // A refused prompted conversation must wait for another deliberate Continue.
 requests.length = 0; refuseAnswer = true;

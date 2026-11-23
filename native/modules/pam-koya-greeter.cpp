@@ -7,6 +7,7 @@
 #include <cstring>
 #include <string>
 #include <vector>
+#include <sys/stat.h>
 
 #ifndef KOYA_GREETD_POLICY
 #define KOYA_GREETD_POLICY "/etc/pam.d/greetd"
@@ -14,12 +15,15 @@
 #ifndef KOYA_PAM_DIR
 #define KOYA_PAM_DIR "/etc/pam.d/"
 #endif
+#ifndef KOYA_PAM_VENDOR_DIR
+#define KOYA_PAM_VENDOR_DIR "/usr/lib/pam.d/"
+#endif
 
 static constexpr const char *prompt = "Koya authentication method v1:";
 
 // Fingerprint bypasses the stock auth include, so allow it only while the
 // stock guard chain has exactly the reviewed shape. Passwords use that chain.
-static bool rules_match(const char *path, const std::vector<std::string> &expected) {
+static bool rules_match(const char *path, const std::vector<std::string> &expected, bool all_groups = false) {
     FILE *file = std::fopen(path, "r");
     if (!file) return false;
     std::vector<std::string> rules;
@@ -40,10 +44,12 @@ static bool rules_match(const char *path, const std::vector<std::string> &expect
         if (words.empty()) continue;
         std::string type = words[0];
         for (char &c : type) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-        if (type == "@include" || type == "-auth") {
-            // Optional systemd-home auth is part of the reviewed Arch chain.
-            if (type != "-auth") { std::free(line); std::fclose(file); return false; }
-        } else if (type != "auth") continue;
+        if (type == "@include") { std::free(line); std::fclose(file); return false; }
+        if (type != "auth" && type != "-auth" &&
+            !(all_groups && (type == "account" || type == "password" || type == "session"))) {
+            if (all_groups) { std::free(line); std::fclose(file); return false; }
+            continue;
+        }
         words[0] = type;
         std::string normalized;
         for (const auto &word : words) { if (!normalized.empty()) normalized += ' '; normalized += word; }
@@ -52,7 +58,7 @@ static bool rules_match(const char *path, const std::vector<std::string> &expect
     std::free(line); std::fclose(file);
     return rules == expected;
 }
-static bool stock_auth() {
+static bool stock_arch_auth() {
     return rules_match(KOYA_GREETD_POLICY, {"auth required pam_securetty.so", "auth requisite pam_nologin.so", "auth include system-local-login"})
         && rules_match(KOYA_PAM_DIR "system-local-login", {"auth include system-login"})
         && rules_match(KOYA_PAM_DIR "system-login", {"auth required pam_shells.so", "auth requisite pam_nologin.so", "auth include system-auth"})
@@ -65,8 +71,22 @@ static bool stock_auth() {
             "auth required pam_env.so",
             "auth required pam_faillock.so authsucc"});
 }
+static bool stock_alpine_auth() {
+    const auto effective = [](const char *name) {
+        const std::string local = std::string(KOYA_PAM_DIR) + name;
+        struct stat info {};
+        return lstat(local.c_str(), &info) == 0 ? local : std::string(KOYA_PAM_VENDOR_DIR) + name;
+    };
+    // /etc/pam.d takes precedence even when its contents are not approved.
+    return rules_match(effective("greetd").c_str(), {"auth include base-auth",
+            "account include base-account", "password include base-password", "session include base-session"}, true)
+        && rules_match(effective("base-auth").c_str(), {"auth required pam_unix.so nullok", "auth required pam_nologin.so",
+            "auth required pam_env.so", "-auth optional pam_gnome_keyring.so",
+            "-auth optional pam_kwallet5.so"});
+}
 
-extern "C" int pam_sm_authenticate(pam_handle_t *pamh, int, int, const char **) {
+extern "C" int pam_sm_authenticate(pam_handle_t *pamh, int, int argc, const char **argv) {
+    if (argc > 1 || (argc == 1 && std::strcmp(argv[0], "platform=alpine"))) return PAM_AUTH_ERR;
     const pam_conv *conv = nullptr;
     if (pam_get_item(pamh, PAM_CONV, reinterpret_cast<const void **>(&conv)) != PAM_SUCCESS || !conv || !conv->conv)
         return PAM_AUTH_ERR;
@@ -77,7 +97,7 @@ extern "C" int pam_sm_authenticate(pam_handle_t *pamh, int, int, const char **) 
     if (status != PAM_SUCCESS || !response || !response->resp) { std::free(response); return PAM_AUTH_ERR; }
     const bool fingerprint = std::strcmp(response->resp, "fingerprint") == 0;
     int result = PAM_AUTH_ERR;
-    if (fingerprint) result = stock_auth() ? PAM_AUTHINFO_UNAVAIL : PAM_AUTH_ERR;
+    if (fingerprint) result = (argc == 1 ? stock_alpine_auth() : stock_arch_auth()) ? PAM_AUTHINFO_UNAVAIL : PAM_AUTH_ERR;
     else if (std::strcmp(response->resp, "password") == 0) result = PAM_SUCCESS;
     volatile char *secret = response->resp;
     for (size_t i = 0, n = std::strlen(response->resp); i < n; ++i) secret[i] = 0;
